@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
@@ -67,4 +68,44 @@ func Decryption(cipherText string) (string, error) {
 	}
 	plain := aesDecryptCFB(encryptedHex, key)
 	return string(plain), nil
+}
+
+// Encrypt AES-GCM 加密，返回 hex
+func Encrypt(plain, key []byte) (string, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	ciphertext := gcm.Seal(nonce, nonce, plain, nil)
+	return hex.EncodeToString(ciphertext), nil
+}
+
+// Decrypt AES-GCM 解密
+func Decrypt(enc string, key []byte) ([]byte, error) {
+	data, err := hex.DecodeString(enc)
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	ns := gcm.NonceSize()
+	if len(data) < ns {
+		return nil, errors.New("ciphertext too short")
+	}
+	nonce, ciphertext := data[:ns], data[ns:]
+	return gcm.Open(nil, nonce, ciphertext, nil)
 }

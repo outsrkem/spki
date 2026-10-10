@@ -1,15 +1,17 @@
 spki:
   app:
     bind: "0.0.0.0:18183"
+  vector:
+    k0: "" # head -c 32 /dev/random | base64 或 openssl rand -base64 32
   database:
     host: "127.0.0.1"
     port: "3306"
-    name: ""
-    user: ""
+    name: "spkidb"
+    user: "spki"
     passwd: "" #加密密码
   ats:
     endpoint: "http://127.0.0.1:18185"
   uias:
-    endpoint: "https://uias-devops.endpoint.outsrkem.top:30078"
+    endpoint: "http://127.0.0.1:30078"
   log:
     level: "DEBUG"
