@@ -4,9 +4,9 @@ spki:
   database:
     host: "127.0.0.1"
     port: "3306"
-    name: ""
-    user: ""
-    passwd: "" #加密密码
+    name: "spkidb"
+    user: "service"
+    passwd: "8de3c76bf07118f84a50cb1cc5c691d042f5e91a288170b19f1d52e954b203" #加密密码
   ats:
     endpoint: "http://127.0.0.1:18185"
   uias:

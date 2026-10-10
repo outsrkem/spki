@@ -18,5 +18,6 @@ func helloWord() func(ctx context.Context, c *app.RequestContext) {
 
 func Routes(r *server.Hertz) {
 	r.GET("/", helloWord())
-	r.POST("/spki/ca/init", apc("snms:class:createClass"), cacert.InitCa())
+	r.POST("/spki/ca/init", cacert.InitCa())
+	r.POST("/spki/certificate", cacert.InitCa())
 }
