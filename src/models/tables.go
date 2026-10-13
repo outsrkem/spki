@@ -248,6 +248,32 @@ func ListRevokedByIssuer(issuerID string) ([]Version, error) {
 	return list, err
 }
 
+// GetMaxRevision 取某证书当前最大版本号
+func GetMaxRevision(certID string) (int, error) {
+	var max int
+	err := mysql.OrmDB.Model(&Version{}).
+		Where("certid = ?", certID).
+		Select("COALESCE(MAX(revision), 0)").
+		Scan(&max).Error
+	return max, err
+}
+
+// SaveVersionWithKey 事务：写 private_key（可选）+ version
+// 续期时若复用旧私钥，key 传 nil
+func SaveVersionWithKey(key *PrivateKey, version Version) error {
+	return mysql.OrmDB.Transaction(func(tx *gorm.DB) error {
+		if key != nil {
+			if err := tx.Create(key).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Create(&version).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
 // ---------- 工具 ----------
 
 func strPtrIf(s string) *string {

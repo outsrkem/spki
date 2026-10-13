@@ -211,13 +211,7 @@ func buildSubject(n Names) pkix.Name {
 // signCert 通用签发：
 //   - parentCert == nil 时自签名（根 CA）
 //   - parentCert != nil 时由 parent 签发（中间 CA / 末端证书）
-func signCert(
-	subjectKey any,
-	parentCert *x509.Certificate,
-	parentSigner crypto.Signer,
-	cfg *CertConfig,
-	isCA bool,
-) ([]byte, error) {
+func signCert(subjectKey any, parentCert *x509.Certificate, parentSigner crypto.Signer, cfg *CertConfig, isCA bool) ([]byte, error) {
 	if cfg == nil {
 		return nil, errors.New("config is nil")
 	}

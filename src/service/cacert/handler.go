@@ -53,7 +53,7 @@ func IssueIntermediate() app.HandlerFunc {
 		}
 		userID := c.GetString("userId")
 		account := c.GetString("account")
-	
+
 		certID, err := IssueIntermediateSvc(userID, account, req.ParentID, &req.CertConfig)
 		if err != nil {
 			hlog.Error("IssueIntermediate: ", err)
@@ -156,5 +156,35 @@ func DownloadCRL() app.HandlerFunc {
 			return
 		}
 		c.Data(http.StatusOK, "application/x-pem-file", []byte(crl))
+	}
+}
+
+// ---------- 续签 ----------
+
+// RenewCert POST /spki/cert/:id/renew
+func RenewCert() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		certID := c.Param("id")
+		var req struct {
+			Expiry int `json:"expiry"`
+		}
+		if err := c.BindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "请求体错误: "+err.Error(), ""))
+			return
+		}
+		if req.Expiry <= 0 {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "expiry must be > 0", ""))
+			return
+		}
+		rev, err := RenewCertSvc(certID, req.Expiry)
+		if err != nil {
+			hlog.Error("RenewCert: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"certId":   certID,
+			"revision": rev,
+		}))
 	}
 }

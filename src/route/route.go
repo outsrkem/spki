@@ -30,6 +30,7 @@ func Routes(r *server.Hertz) {
 	cert := r.Group("/spki/cert")
 	{
 		cert.POST("/endentity", cacert.IssueEndEntity())
+		cert.POST("/:id/renew", cacert.RenewCert())
 		cert.POST("/:id/revoke", cacert.RevokeCert())
 		cert.DELETE("/:id", cacert.DeleteCert())
 		cert.GET("/:id/chain", cacert.ExportCertChain())
