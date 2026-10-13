@@ -1,9 +1,10 @@
 package config
 
 import (
-	"gopkg.in/yaml.v3"
 	"os"
 	"spki/src/pkg/crypto"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 )
@@ -15,6 +16,7 @@ type Config struct {
 
 type Spki struct {
 	App      App      `yaml:"app"`
+	Vector   Vector   `yaml:"vector"`
 	Database Database `yaml:"database"`
 	Ats      Ats      `yaml:"ats"`
 	Uias     Uias     `yaml:"uias"`
@@ -23,6 +25,10 @@ type Spki struct {
 
 type App struct {
 	Bind string `yaml:"bind"`
+}
+
+type Vector struct {
+	K0 string `yaml:"k0"`
 }
 
 type Database struct {

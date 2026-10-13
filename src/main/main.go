@@ -6,6 +6,7 @@ import (
 	"spki/src/config"
 	"spki/src/database/mysql"
 	"spki/src/route"
+	"spki/src/service/cacert"
 	"spki/src/slog"
 
 	"github.com/cloudwego/hertz/pkg/app/server"
@@ -66,6 +67,7 @@ func main() {
 	slog.InitLog(appCfg.Spki.Log.Level)
 	mysql.InitDB(&appCfg.Spki.Database)
 	hlog.Info("start server")
+	cacert.InitVectorKey(appCfg.Spki.Vector.K0)
 
 	// 4. 启动 Hertz 服务器
 	h := server.Default(

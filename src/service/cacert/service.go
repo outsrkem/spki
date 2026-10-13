@@ -39,9 +39,9 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse cert: %w", err)
 	}
-	keyPEM, err := privateKeyToPEM(key)
+	encKey, encPassphrase, err := encryptPrivateKey(key)
 	if err != nil {
-		return "", fmt.Errorf("key to pem: %w", err)
+		return "", fmt.Errorf("encrypt private key: %w", err)
 	}
 	certPEM := pemEncode("CERTIFICATE", der)
 
@@ -69,7 +69,8 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 	}
 	keyRec := &models.PrivateKey{
 		KeyID:      keyID,
-		PrivateKey: string(keyPEM),
+		PrivateKey: encKey,
+		Passphrase: encPassphrase,
 		CreateTime: now,
 	}
 	version := models.Version{
@@ -116,7 +117,7 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 	if err != nil {
 		return "", err
 	}
-	parentSigner, err := parseKeySigner(parentKey.PrivateKey)
+	parentSigner, err := decryptPrivateKey(parentKey.PrivateKey, parentKey.Passphrase)
 	if err != nil {
 		return "", err
 	}
@@ -133,9 +134,9 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 	if err != nil {
 		return "", err
 	}
-	keyPEM, err := privateKeyToPEM(key)
+	encKey, encPassphrase, err := encryptPrivateKey(key)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("encrypt private key: %w", err)
 	}
 	certPEM := pemEncode("CERTIFICATE", der)
 
@@ -163,7 +164,8 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 	}
 	keyRec := &models.PrivateKey{
 		KeyID:      keyID,
-		PrivateKey: string(keyPEM),
+		PrivateKey: encKey,
+		Passphrase: encPassphrase,
 		CreateTime: now,
 	}
 	version := models.Version{
@@ -206,21 +208,22 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	if err != nil {
 		return "", err
 	}
-	issuerSigner, err := parseKeySigner(issuerKey.PrivateKey)
+	issuerSigner, err := decryptPrivateKey(issuerKey.PrivateKey, issuerKey.Passphrase)
 	if err != nil {
 		return "", err
 	}
 
 	var key crypto.Signer
-	var keyPEM []byte
+	var encKey string
+	var encPassphrase string
 	if cfg.CSRPem == "" {
 		key, err = createKey(cfg.Key.Algo, cfg.Key.Size)
 		if err != nil {
 			return "", err
 		}
-		keyPEM, err = privateKeyToPEM(key)
+		encKey, encPassphrase, err = encryptPrivateKey(key)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("encrypt private key: %w", err)
 		}
 	}
 
@@ -261,7 +264,8 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	if cfg.CSRPem == "" {
 		keyRec = &models.PrivateKey{
 			KeyID:      keyID,
-			PrivateKey: string(keyPEM),
+			PrivateKey: encKey,
+			Passphrase: encPassphrase,
 			CreateTime: now,
 		}
 	}
@@ -366,7 +370,7 @@ func BuildCRL(issuerID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	signer, err := parseKeySigner(issuerKeyRec.PrivateKey)
+	signer, err := decryptPrivateKey(issuerKeyRec.PrivateKey, issuerKeyRec.Passphrase)
 	if err != nil {
 		return "", err
 	}
@@ -457,9 +461,9 @@ func renewCert(certID string, expiry int, isCA, selfSign bool) (int, error) {
 	if err != nil || oldKey == nil {
 		return 0, errors.New("old private key not found")
 	}
-	signer, err := parseKeySigner(oldKey.PrivateKey)
+	signer, err := decryptPrivateKey(oldKey.PrivateKey, oldKey.Passphrase)
 	if err != nil {
-		return 0, fmt.Errorf("parse old key: %w", err)
+		return 0, fmt.Errorf("decrypt old key: %w", err)
 	}
 
 	// 4. 解析旧证书，还原配置
@@ -490,7 +494,7 @@ func renewCert(certID string, expiry int, isCA, selfSign bool) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		parentSigner, err = parseKeySigner(issuerKey.PrivateKey)
+		parentSigner, err = decryptPrivateKey(issuerKey.PrivateKey, issuerKey.Passphrase)
 		if err != nil {
 			return 0, err
 		}

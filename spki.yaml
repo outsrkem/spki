@@ -1,6 +1,8 @@
 spki:
   app:
     bind: "0.0.0.0:18183"
+  vector:
+    k0: "SQ0Weww2hjLCq51It8d6Jnl8LqL5FxN6OUaZcXpL3Yc="
   database:
     host: "127.0.0.1"
     port: "3306"

@@ -29,6 +29,7 @@ type PrivateKey struct {
 	ID         int    `gorm:"column:id;primaryKey;autoIncrement"`
 	KeyID      string `gorm:"column:keyid"`
 	PrivateKey string `gorm:"column:private_key"`
+	Passphrase string `gorm:"column:passphrase"` // 加密后的口令
 	CreateTime int64  `gorm:"column:create_time"`
 }
 
