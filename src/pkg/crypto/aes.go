@@ -4,7 +4,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -71,7 +70,7 @@ func Decryption(cipherText string) (string, error) {
 	return string(plain), nil
 }
 
-// Encrypt AES-GCM 加密，返回 base64
+// Encrypt AES-GCM 加密，返回 hex
 func Encrypt(plain, key []byte) (string, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -86,12 +85,12 @@ func Encrypt(plain, key []byte) (string, error) {
 		return "", err
 	}
 	ciphertext := gcm.Seal(nonce, nonce, plain, nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+	return hex.EncodeToString(ciphertext), nil
 }
 
 // Decrypt AES-GCM 解密
 func Decrypt(enc string, key []byte) ([]byte, error) {
-	data, err := base64.StdEncoding.DecodeString(enc)
+	data, err := hex.DecodeString(enc)
 	if err != nil {
 		return nil, err
 	}
