@@ -710,6 +710,38 @@ func ListCertsByGenre(genre int, userID string) ([]CertListItem, error) {
 	return items, nil
 }
 
+// ListCertsByGenres 按多个类型列出证书
+// genres 为空 → 全部
+func ListCertsByGenres(genres []int, userID string) ([]CertListItem, error) {
+	certs, err := models.ListCertificatesByGenres(genres, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]CertListItem, 0, len(certs))
+	for _, c := range certs {
+		item := CertListItem{
+			CertID:   c.CertID,
+			Title:    c.Title,
+			Subject:  c.Subject,
+			State:    c.State,
+			ParentID: c.ParentID,
+			Pathlev:  c.Pathlev,
+			Genre:    c.Genre,
+		}
+		v, err := models.GetLatestVersion(c.CertID)
+		if err == nil && v != nil {
+			item.Revision = v.Revision
+			item.Serial = v.Serial
+			item.NotBefore = v.EffectiveTime
+			item.NotAfter = v.ExpirationTime
+			item.Alarm = v.Alarm
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
 // ListCertVersionsSvc 列出某证书的所有版本
 func ListCertVersionsSvc(certID string) ([]VersionItem, error) {
 	cert, err := models.GetCertificateByCertID(certID)

@@ -290,6 +290,23 @@ func ListCertificatesByGenre(genre int, userID string) ([]Certificate, error) {
 	return list, err
 }
 
+// ListCertificatesByGenres 按多个类型列出证书
+// genres 为空 → 全部
+func ListCertificatesByGenres(genres []int, userID string) ([]Certificate, error) {
+	var list []Certificate
+	q := mysql.OrmDB.Model(&Certificate{})
+
+	if len(genres) > 0 {
+		q = q.Where("genre IN ?", genres)
+	}
+	if userID != "" {
+		q = q.Where("user_id = ?", userID)
+	}
+
+	err := q.Order("id desc").Find(&list).Error
+	return list, err
+}
+
 // ---------- 工具 ----------
 
 func strPtrIf(s string) *string {
