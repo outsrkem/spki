@@ -188,3 +188,73 @@ func RenewCert() app.HandlerFunc {
 		}))
 	}
 }
+
+// ---------- 查询 ----------
+
+// ListRootCAs GET /spki/ca/roots
+func ListRootCAs() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		userID := c.GetString("userId")
+		items, err := ListCertsByGenre(GenreRoot, userID)
+		if err != nil {
+			hlog.Error("ListRootCAs: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"total": len(items),
+			"items": items,
+		}))
+	}
+}
+
+// ListIntermediateCAs GET /spki/ca/intermediates
+func ListIntermediateCAs() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		userID := c.GetString("userId")
+		items, err := ListCertsByGenre(GenreInter, userID)
+		if err != nil {
+			hlog.Error("ListIntermediateCAs: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"total": len(items),
+			"items": items,
+		}))
+	}
+}
+
+// ListLeafCerts GET /spki/cert/leaves
+func ListLeafCerts() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		userID := c.GetString("userId")
+		items, err := ListCertsByGenre(GenreLeaf, userID)
+		if err != nil {
+			hlog.Error("ListLeafCerts: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"total": len(items),
+			"items": items,
+		}))
+	}
+}
+
+// ListCertVersions GET /spki/cert/:id/versions
+func ListCertVersions() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		certID := c.Param("id")
+		items, err := ListCertVersionsSvc(certID)
+		if err != nil {
+			hlog.Error("ListCertVersions: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"total": len(items),
+			"items": items,
+		}))
+	}
+}

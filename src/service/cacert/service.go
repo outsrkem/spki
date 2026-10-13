@@ -642,3 +642,95 @@ func extKeyUsageToStrings(eku []x509.ExtKeyUsage) []string {
 	}
 	return out
 }
+
+// ---------- 查询 ----------
+
+// CertListItem 列表项 DTO
+type CertListItem struct {
+	CertID    string  `json:"certId"`
+	Title     *string `json:"title,omitempty"`
+	Subject   *string `json:"subject,omitempty"`
+	State     *string `json:"state,omitempty"`
+	ParentID  *string `json:"parentId,omitempty"`
+	Pathlev   int     `json:"pathlev"`
+	Genre     int     `json:"genre"`
+	Revision  *int    `json:"revision,omitempty"`
+	Serial    *string `json:"serial,omitempty"`
+	NotBefore *int64  `json:"notBefore,omitempty"`
+	NotAfter  *int64  `json:"notAfter,omitempty"`
+	Alarm     *int8   `json:"alarm,omitempty"`
+}
+
+// VersionItem 版本列表项 DTO
+type VersionItem struct {
+	Revision       *int    `json:"revision"`
+	CertID         *string `json:"certId"`
+	KeyID          *string `json:"keyId"`
+	Serial         *string `json:"serial"`
+	Cert           *string `json:"cert"`
+	EffectiveTime  *int64  `json:"effectiveTime"`
+	ExpirationTime *int64  `json:"expirationTime"`
+	RevocationTime *int64  `json:"revocationTime,omitempty"`
+	Alarm          *int8   `json:"alarm"`
+}
+
+// ListCertsByGenre 按类型列出证书，带最新版本信息
+func ListCertsByGenre(genre int, userID string) ([]CertListItem, error) {
+	certs, err := models.ListCertificatesByGenre(genre, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]CertListItem, 0, len(certs))
+	for _, c := range certs {
+		item := CertListItem{
+			CertID:   c.CertID,
+			Title:    c.Title,
+			Subject:  c.Subject,
+			State:    c.State,
+			ParentID: c.ParentID,
+			Pathlev:  c.Pathlev,
+			Genre:    c.Genre,
+		}
+		// 取最新版本
+		v, err := models.GetLatestVersion(c.CertID)
+		if err == nil && v != nil {
+			item.Revision = v.Revision
+			item.Serial = v.Serial
+			item.NotBefore = v.EffectiveTime
+			item.NotAfter = v.ExpirationTime
+			item.Alarm = v.Alarm
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+// ListCertVersionsSvc 列出某证书的所有版本
+func ListCertVersionsSvc(certID string) ([]VersionItem, error) {
+	cert, err := models.GetCertificateByCertID(certID)
+	if err != nil || cert == nil {
+		return nil, errors.New("certificate not found")
+	}
+
+	versions, err := models.ListVersionsByCertID(certID)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]VersionItem, 0, len(versions))
+	for _, v := range versions {
+		items = append(items, VersionItem{
+			Revision:       v.Revision,
+			CertID:         v.CertID,
+			KeyID:          v.KeyID,
+			Serial:         v.Serial,
+			Cert:           v.Cert,
+			EffectiveTime:  v.EffectiveTime,
+			ExpirationTime: v.ExpirationTime,
+			RevocationTime: v.RevocationTime,
+			Alarm:          v.Alarm,
+		})
+	}
+	return items, nil
+}

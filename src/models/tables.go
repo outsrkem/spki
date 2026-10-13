@@ -274,6 +274,18 @@ func SaveVersionWithKey(key *PrivateKey, version Version) error {
 	})
 }
 
+// ListCertificatesByGenre 按类型查证书
+// genre: 1=根CA, 2=中间CA, 3=末端证书
+func ListCertificatesByGenre(genre int, userID string) ([]Certificate, error) {
+	var list []Certificate
+	q := mysql.OrmDB.Where("genre = ?", genre)
+	if userID != "" {
+		q = q.Where("user_id = ?", userID)
+	}
+	err := q.Order("id desc").Find(&list).Error
+	return list, err
+}
+
 // ---------- 工具 ----------
 
 func strPtrIf(s string) *string {

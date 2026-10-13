@@ -19,23 +19,35 @@ func helloWord() app.HandlerFunc {
 func Routes(r *server.Hertz) {
 	r.GET("/", helloWord())
 
-	// CA 路由组
+	// ========== CA 路由组 ==========
 	ca := r.Group("/spki/ca")
 	{
+		// 签发
 		ca.POST("/init", cacert.InitCa())
 		ca.POST("/intermediate", cacert.IssueIntermediate())
+
+		// 查询
+		ca.GET("/roots", cacert.ListRootCAs())
+		ca.GET("/intermediates", cacert.ListIntermediateCAs())
 	}
 
-	// 末端证书路由组
+	// ========== 末端证书路由组 ==========
 	cert := r.Group("/spki/cert")
 	{
+		// 签发
 		cert.POST("/endentity", cacert.IssueEndEntity())
+
+		// 列表（放在 :id 之前，避免路由冲突）
+		cert.GET("/leaves", cacert.ListLeafCerts())
+
+		// 单个证书操作
 		cert.POST("/:id/renew", cacert.RenewCert())
 		cert.POST("/:id/revoke", cacert.RevokeCert())
 		cert.DELETE("/:id", cacert.DeleteCert())
 		cert.GET("/:id/chain", cacert.ExportCertChain())
+		cert.GET("/:id/versions", cacert.ListCertVersions())
 	}
 
-	// CRL
+	// ========== CRL ==========
 	r.GET("/spki/crl", cacert.DownloadCRL())
 }
