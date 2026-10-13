@@ -3,6 +3,7 @@ package cacert
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"spki/src/pkg/answer"
 
@@ -249,6 +250,41 @@ func ListCertVersions() app.HandlerFunc {
 		items, err := ListCertVersionsSvc(certID)
 		if err != nil {
 			hlog.Error("ListCertVersions: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"total": len(items),
+			"items": items,
+		}))
+	}
+}
+
+// ListCert GET /spki/cert?genre=1|2|3
+// genre 可选：
+//
+//	1 = 根 CA
+//	2 = 中间 CA
+//	3 = 末端证书
+//	不传 = 全部
+func ListCert() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		userID := c.GetString("userId")
+
+		genreStr := c.Query("genre")
+		var genre int = -1 // -1 表示全部
+		if genreStr != "" {
+			g, err := strconv.Atoi(genreStr)
+			if err != nil || g < 1 || g > 3 {
+				c.JSON(http.StatusBadRequest, answer.ResBody("444", "genre must be 1/2/3", ""))
+				return
+			}
+			genre = g
+		}
+
+		items, err := ListCertsByGenre(genre, userID)
+		if err != nil {
+			hlog.Error("ListCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
 		}

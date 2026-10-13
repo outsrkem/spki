@@ -679,6 +679,7 @@ type VersionItem struct {
 }
 
 // ListCertsByGenre 按类型列出证书，带最新版本信息
+// genre = -1 时返回全部
 func ListCertsByGenre(genre int, userID string) ([]CertListItem, error) {
 	certs, err := models.ListCertificatesByGenre(genre, userID)
 	if err != nil {
@@ -696,7 +697,6 @@ func ListCertsByGenre(genre int, userID string) ([]CertListItem, error) {
 			Pathlev:  c.Pathlev,
 			Genre:    c.Genre,
 		}
-		// 取最新版本
 		v, err := models.GetLatestVersion(c.CertID)
 		if err == nil && v != nil {
 			item.Revision = v.Revision
