@@ -191,47 +191,34 @@ func RenewCert() app.HandlerFunc {
 
 // ---------- 查询 ----------
 
-// ListRootCAs GET /spki/ca/roots
-func ListRootCAs() app.HandlerFunc {
+// ListCert GET /spki/cert?genre=1&genre=2
+// 支持多个 genre：
+//
+//	?genre=1&genre=2  → 查根 CA + 中间 CA
+//	?genre=3          → 查末端证书
+//	不传               → 全部
+func ListCert() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		userID := c.GetString("userId")
-		items, err := ListCertsByGenre(GenreRoot, userID)
-		if err != nil {
-			hlog.Error("ListRootCAs: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+
+		var query Query
+		if err := c.BindQuery(&query); err != nil {
+			hlog.Error("ListCert bind: ", err)
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "参数错误: "+err.Error(), ""))
 			return
 		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
-			"total": len(items),
-			"items": items,
-		}))
-	}
-}
 
-// ListIntermediateCAs GET /spki/ca/intermediates
-func ListIntermediateCAs() app.HandlerFunc {
-	return func(ctx context.Context, c *app.RequestContext) {
-		userID := c.GetString("userId")
-		items, err := ListCertsByGenre(GenreInter, userID)
-		if err != nil {
-			hlog.Error("ListIntermediateCAs: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
-			return
+		// 校验 genre 范围
+		for _, g := range query.Genre {
+			if g < 1 || g > 3 {
+				c.JSON(http.StatusBadRequest, answer.ResBody("444", "genre must be 1/2/3", ""))
+				return
+			}
 		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
-			"total": len(items),
-			"items": items,
-		}))
-	}
-}
 
-// ListLeafCerts GET /spki/cert/leaves
-func ListLeafCerts() app.HandlerFunc {
-	return func(ctx context.Context, c *app.RequestContext) {
-		userID := c.GetString("userId")
-		items, err := ListCertsByGenre(GenreLeaf, userID)
+		items, err := ListCertsByGenres(query.Genre, userID)
 		if err != nil {
-			hlog.Error("ListLeafCerts: ", err)
+			hlog.Error("ListCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
 		}
@@ -259,44 +246,9 @@ func ListCertVersions() app.HandlerFunc {
 	}
 }
 
-// ListCert GET /spki/cert?genre=1|2|3
-// genre 可选：
-//
-//	1 = 根 CA
-//	2 = 中间 CA
-//	3 = 末端证书
-//	不传 = 全部
-//
-// ListCert GET /spki/cert?genre=1&genre=2&genre=3
-// 支持多个 genre：
-//
-//	?genre=1&genre=2  → 查根 CA + 中间 CA
-//	?genre=3          → 查末端证书
-//	不传               → 全部
+// ---------- Query 结构体 ----------
+
+// Query 查询参数
 type Query struct {
 	Genre []int `query:"genre"`
-}
-
-func ListCert() app.HandlerFunc {
-	return func(ctx context.Context, c *app.RequestContext) {
-		userID := c.GetString("userId")
-
-		var query Query
-		if err := c.BindQuery(&query); err != nil {
-			hlog.Error("ListCert bind: ", err)
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "请求体错误: "+err.Error(), ""))
-			return
-		}
-		// genres 为空 → 查全部
-		items, err := ListCertsByGenres(query.Genre, userID)
-		if err != nil {
-			hlog.Error("ListCert: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
-			return
-		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
-			"total": len(items),
-			"items": items,
-		}))
-	}
 }
