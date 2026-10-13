@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -360,4 +361,43 @@ func strPtrIf(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// formatSubject 把 pkix.Name 转成 OpenSSL -subj 风格
+// 输出：/C=CN/O=PrivateSign/OU=PrivateSign/CN=AAA PrivateSign Root CA
+func formatSubject(n pkix.Name) string {
+	var b strings.Builder
+
+	// C（可能有多个）
+	for _, c := range n.Country {
+		b.WriteString("/C=")
+		b.WriteString(c)
+	}
+	// ST
+	for _, st := range n.Province {
+		b.WriteString("/ST=")
+		b.WriteString(st)
+	}
+	// L
+	for _, l := range n.Locality {
+		b.WriteString("/L=")
+		b.WriteString(l)
+	}
+	// O
+	for _, o := range n.Organization {
+		b.WriteString("/O=")
+		b.WriteString(o)
+	}
+	// OU
+	for _, ou := range n.OrganizationalUnit {
+		b.WriteString("/OU=")
+		b.WriteString(ou)
+	}
+	// CN
+	if n.CommonName != "" {
+		b.WriteString("/CN=")
+		b.WriteString(n.CommonName)
+	}
+
+	return b.String()
 }

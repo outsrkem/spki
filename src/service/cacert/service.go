@@ -53,7 +53,7 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 	serial := cert.SerialNumber.Text(16)
 	eff := cert.NotBefore.UnixMilli()
 	exp := cert.NotAfter.UnixMilli()
-	subject := cert.Subject.String()
+	subject := formatSubject(cert.Subject)
 	state := StateValid
 	alarm := int8(0)
 
@@ -148,7 +148,7 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 	serial := cert.SerialNumber.Text(16)
 	eff := cert.NotBefore.UnixMilli()
 	exp := cert.NotAfter.UnixMilli()
-	subject := cert.Subject.String()
+	subject := formatSubject(cert.Subject)
 	state := StateValid
 	alarm := int8(0)
 
@@ -245,7 +245,7 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	serial := cert.SerialNumber.Text(16)
 	eff := cert.NotBefore.UnixMilli()
 	exp := cert.NotAfter.UnixMilli()
-	subject := cert.Subject.String()
+	subject := formatSubject(cert.Subject)
 	state := StateValid
 	alarm := int8(0)
 
@@ -782,7 +782,7 @@ type RootInfo struct {
 	Serial    *string  `json:"serial,omitempty"`
 	NotBefore *int64   `json:"notBefore,omitempty"`
 	NotAfter  *int64   `json:"notAfter,omitempty"`
-	Chain     []string `json:"chain"` // 从末端到根的 certId 列表
+	Chain     []string `json:"chain"`
 }
 
 // FindRootCASvc 从任意证书向上找到根 CA
