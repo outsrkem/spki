@@ -770,3 +770,88 @@ func ListCertVersionsSvc(certID string) ([]VersionItem, error) {
 	}
 	return items, nil
 }
+
+// RootInfo 根 CA 信息
+type RootInfo struct {
+	CertID    string   `json:"certId"`
+	Title     *string  `json:"title,omitempty"`
+	Subject   *string  `json:"subject,omitempty"`
+	State     *string  `json:"state,omitempty"`
+	Genre     int      `json:"genre"`
+	Pathlev   int      `json:"pathlev"`
+	Serial    *string  `json:"serial,omitempty"`
+	NotBefore *int64   `json:"notBefore,omitempty"`
+	NotAfter  *int64   `json:"notAfter,omitempty"`
+	Chain     []string `json:"chain"` // 从末端到根的 certId 列表
+}
+
+// FindRootCASvc 从任意证书向上找到根 CA
+func FindRootCASvc(certID string) (*RootInfo, error) {
+	cur, err := models.GetCertificateByCertID(certID)
+	if err != nil || cur == nil {
+		return nil, errors.New("certificate not found")
+	}
+
+	chain := make([]string, 0, 4)
+	var root *models.Certificate
+
+	for cur != nil {
+		chain = append(chain, cur.CertID)
+		if cur.ParentID == nil {
+			root = cur
+			break
+		}
+		cur, err = models.GetCertificateByCertID(*cur.ParentID)
+		if err != nil || cur == nil {
+			break
+		}
+	}
+
+	if root == nil {
+		return nil, errors.New("root CA not found")
+	}
+
+	info := &RootInfo{
+		CertID:  root.CertID,
+		Title:   root.Title,
+		Subject: root.Subject,
+		State:   root.State,
+		Genre:   root.Genre,
+		Pathlev: root.Pathlev,
+		Chain:   chain,
+	}
+
+	// 取最新版本信息
+	v, err := models.GetLatestVersion(root.CertID)
+	if err == nil && v != nil {
+		info.Serial = v.Serial
+		info.NotBefore = v.EffectiveTime
+		info.NotAfter = v.ExpirationTime
+	}
+
+	return info, nil
+}
+
+// BuildRootPEM 从任意证书向上找到根 CA，返回根 CA 的 PEM
+func BuildRootPEM(certID string) (string, error) {
+	cur, err := models.GetCertificateByCertID(certID)
+	if err != nil || cur == nil {
+		return "", errors.New("certificate not found")
+	}
+
+	// 向上遍历，直到 parent_id == nil
+	for cur != nil {
+		if cur.ParentID == nil {
+			v, err := models.GetLatestVersion(cur.CertID)
+			if err != nil || v == nil {
+				return "", errors.New("root version not found")
+			}
+			return *v.Cert, nil
+		}
+		cur, err = models.GetCertificateByCertID(*cur.ParentID)
+		if err != nil || cur == nil {
+			break
+		}
+	}
+	return "", errors.New("root CA not found")
+}

@@ -127,11 +127,30 @@ func DeleteCert() app.HandlerFunc {
 // ---------- 导出链 ----------
 
 // ExportCertChain GET /spki/cert/:id/chain
+// 参数：
+//
+//	includeRoot=true|false  链里是否包含根 CA，默认 true
+//	onlyRoot=true|false     只返回根 CA 的 PEM，默认 false
+//
+// 用法：
+//
+//	/chain                    完整链（末端 + 中间 + 根）
+//	/chain?includeRoot=false  不含根
+//	/chain?onlyRoot=true      只返回根 CA
 func ExportCertChain() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		certID := c.Param("id")
 		includeRoot := c.DefaultQuery("includeRoot", "true") != "false"
-		chain, err := BuildCertChain(certID, includeRoot)
+		onlyRoot := c.DefaultQuery("onlyRoot", "false") == "true"
+
+		var chain string
+		var err error
+
+		if onlyRoot {
+			chain, err = BuildRootPEM(certID)
+		} else {
+			chain, err = BuildCertChain(certID, includeRoot)
+		}
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
@@ -243,6 +262,21 @@ func ListCertVersions() app.HandlerFunc {
 			"total": len(items),
 			"items": items,
 		}))
+	}
+}
+
+// FindRootCA GET /spki/cert/:id/root
+// 从任意证书向上找到根 CA
+func FindRootCA() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		certID := c.Param("id")
+		info, err := FindRootCASvc(certID)
+		if err != nil {
+			hlog.Error("FindRootCA: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+		c.JSON(http.StatusOK, answer.ResBody("200", "", info))
 	}
 }
 

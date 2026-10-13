@@ -40,7 +40,9 @@ func Routes(r *server.Hertz) {
 		cert.POST("/:id/revoke", cacert.RevokeCert())
 		cert.DELETE("/:id", cacert.DeleteCert())
 		cert.GET("/:id/chain", cacert.ExportCertChain())
+		cert.GET("/:id/root", cacert.FindRootCA())
 		cert.GET("/:id/versions", cacert.ListCertVersions())
+
 	}
 
 	// ========== CRL ==========
