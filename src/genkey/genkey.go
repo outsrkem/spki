@@ -9,64 +9,23 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 )
 
-func GenkeyMain(algo string, size int) (*rsa.PrivateKey, error) {
-	caPrivateKey, err := rsa.GenerateKey(rand.Reader, size)
-	if err != nil {
-		panic(err)
-	}
-	return caPrivateKey, nil
-
-}
-
-// PrivateKeyToPEM 将私钥转换为 PEM 格式
-func PrivateKeyToPEM(privateKey any) ([]byte, error) {
-	var pemBlock *pem.Block
-
-	switch key := privateKey.(type) {
-	case *rsa.PrivateKey:
-		// 将 RSA 私钥转换为 DER 格式
-		derBytes := x509.MarshalPKCS1PrivateKey(key)
-		pemBlock = &pem.Block{
-			Type:  "RSA PRIVATE KEY",
-			Bytes: derBytes,
-		}
-	case *ecdsa.PrivateKey:
-		// 将 ECDSA 私钥转换为 DER 格式
-		derBytes, err := x509.MarshalECPrivateKey(key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal ECDSA private key: %v", err)
-		}
-		pemBlock = &pem.Block{
-			Type:  "EC PRIVATE KEY",
-			Bytes: derBytes,
-		}
-	case ed25519.PrivateKey:
-		// 将 Ed25519 私钥转换为 DER 格式
-		derBytes, err := x509.MarshalPKCS8PrivateKey(key)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal Ed25519 private key: %v", err)
-		}
-		pemBlock = &pem.Block{
-			Type:  "PRIVATE KEY",
-			Bytes: derBytes,
-		}
-	default:
-		return nil, fmt.Errorf("unsupported private key type: %T", privateKey)
-	}
-
-	// 将 DER 格式的私钥编码为 PEM 格式
-	pemBytes := pem.EncodeToMemory(pemBlock)
-	return pemBytes, nil
-}
-
-// CreateKey 创建私钥，algo：rsa，ecdsa，ed25519
+// CreateKey 创建私钥，algo：rsa、ecdsa、ed25519
+// size 含义：
+//   - rsa：密钥长度，建议 >= 2048
+//   - ecdsa：曲线位数，支持 256、384、521
+//   - ed25519：忽略
 func CreateKey(algo string, size int) (any, error) {
 	switch algo {
 	case "rsa":
+		if size < 2048 {
+			return nil, fmt.Errorf("RSA key size must be >= 2048, got %d", size)
+		}
 		return rsa.GenerateKey(rand.Reader, size)
+
 	case "ecdsa":
 		var curve elliptic.Curve
 		switch size {
@@ -77,45 +36,59 @@ func CreateKey(algo string, size int) (any, error) {
 		case 521:
 			curve = elliptic.P521()
 		default:
-			return nil, fmt.Errorf("unsupported ECDSA key size: %d", size)
+			return nil, fmt.Errorf("unsupported ECDSA key size: %d (supported: 256, 384, 521)", size)
 		}
 		return ecdsa.GenerateKey(curve, rand.Reader)
+
 	case "ed25519":
 		_, privKey, err := ed25519.GenerateKey(rand.Reader)
-		return privKey, err
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate ed25519 key: %w", err)
+		}
+		return privKey, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported key algorithm: %s", algo)
 	}
 }
 
-// GenerateRandomPassword 生成一个随机的强密码
-func GenerateRandomPassword(length int) (string, error) {
-	// 计算需要的字节数（每个字节可以表示 6 位 Base64 字符）
-	byteLength := (length * 6) / 8
-	if (length*6)%8 != 0 {
-		byteLength++
+// PrivateKeyToPEM 将私钥转换为 PKCS#8 PEM 格式
+// 支持 *rsa.PrivateKey、*ecdsa.PrivateKey、ed25519.PrivateKey
+func PrivateKeyToPEM(privateKey any) ([]byte, error) {
+	if privateKey == nil {
+		return nil, errors.New("private key is nil")
 	}
 
-	// 生成随机字节
-	randomBytes := make([]byte, byteLength)
-	_, err := rand.Read(randomBytes)
+	// 统一使用 PKCS#8
+	derBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %v", err)
+		return nil, fmt.Errorf("failed to marshal private key to PKCS#8: %w", err)
 	}
 
-	// 将随机字节编码为 Base64 字符串
-	password := base64.URLEncoding.EncodeToString(randomBytes)
-
-	// 截取指定长度的密码
-	return password[:length], nil
+	pemBlock := &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: derBytes,
+	}
+	return pem.EncodeToMemory(pemBlock), nil
 }
 
-func Test() {
-	// 生成随机密码
-	password, err := GenerateRandomPassword(32)
-	if err != nil {
-		fmt.Println("Failed to generate password:", err)
-		return
+// GenerateRandomPassword 生成一个随机的强密码，字符集为 URL 安全 Base64
+func GenerateRandomPassword(length int) (string, error) {
+	if length <= 0 {
+		return "", fmt.Errorf("password length must be > 0, got %d", length)
 	}
-	fmt.Print(password)
+
+	// Base64 每字符 6 位，向上取整所需字节数
+	byteLength := (length*6 + 7) / 8
+
+	randomBytes := make([]byte, byteLength)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+
+	password := base64.URLEncoding.EncodeToString(randomBytes)
+	if len(password) < length {
+		return "", errors.New("generated password shorter than requested")
+	}
+	return password[:length], nil
 }
