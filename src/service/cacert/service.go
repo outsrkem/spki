@@ -2,7 +2,10 @@ package cacert
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -546,6 +549,9 @@ func buildRenewConfig(cert *models.Certificate, oldCert *x509.Certificate, expir
 		},
 	}
 
+	// 关键：从旧证书推断算法和长度
+	cfg.Key = inferKeySpec(oldCert)
+
 	if len(oldCert.Subject.Organization) > 0 {
 		cfg.Names.O = oldCert.Subject.Organization[0]
 	}
@@ -581,6 +587,20 @@ func buildRenewConfig(cert *models.Certificate, oldCert *x509.Certificate, expir
 	return cfg
 }
 
+// inferKeySpec 从旧证书的公钥推断算法和长度
+func inferKeySpec(cert *x509.Certificate) KeySpec {
+	switch pub := cert.PublicKey.(type) {
+	case *rsa.PublicKey:
+		return KeySpec{Algo: "rsa", Size: pub.N.BitLen()}
+	case *ecdsa.PublicKey:
+		return KeySpec{Algo: "ecdsa", Size: pub.Curve.Params().BitSize}
+	case ed25519.PublicKey:
+		return KeySpec{Algo: "ed25519", Size: 0}
+	default:
+		return KeySpec{Algo: "ecdsa", Size: 256}
+	}
+}
+
 // keyUsageToStrings x509.KeyUsage → []string
 func keyUsageToStrings(ku x509.KeyUsage) []string {
 	var out []string
@@ -599,21 +619,25 @@ func keyUsageToStrings(ku x509.KeyUsage) []string {
 	return out
 }
 
+// extKeyUsageNames 扩展密钥用途 常量 → 字符串
+var extKeyUsageNames = map[x509.ExtKeyUsage]string{
+	x509.ExtKeyUsageServerAuth:      "serverAuth",
+	x509.ExtKeyUsageClientAuth:      "clientAuth",
+	x509.ExtKeyUsageCodeSigning:     "codeSigning",
+	x509.ExtKeyUsageEmailProtection: "emailProtection",
+	x509.ExtKeyUsageTimeStamping:    "timeStamping",
+	x509.ExtKeyUsageOCSPSigning:     "ocspSigning",
+	x509.ExtKeyUsageIPSECEndSystem:  "ipsecEndSystem",
+	x509.ExtKeyUsageIPSECTunnel:     "ipsecTunnel",
+	x509.ExtKeyUsageIPSECUser:       "ipsecUser",
+}
+
 // extKeyUsageToStrings []x509.ExtKeyUsage → []string
 func extKeyUsageToStrings(eku []x509.ExtKeyUsage) []string {
 	var out []string
 	for _, e := range eku {
-		switch e {
-		case x509.ExtKeyUsageServerAuth:
-			out = append(out, "serverAuth")
-		case x509.ExtKeyUsageClientAuth:
-			out = append(out, "clientAuth")
-		case x509.ExtKeyUsageCodeSigning:
-			out = append(out, "codeSigning")
-		case x509.ExtKeyUsageEmailProtection:
-			out = append(out, "emailProtection")
-		case x509.ExtKeyUsageTimeStamping:
-			out = append(out, "timeStamping")
+		if name, ok := extKeyUsageNames[e]; ok {
+			out = append(out, name)
 		}
 	}
 	return out
