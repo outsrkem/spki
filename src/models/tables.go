@@ -15,7 +15,6 @@ type Certificate struct {
 	CertID   string  `gorm:"column:certid"`
 	UserID   string  `gorm:"column:user_id"`
 	Title    *string `gorm:"column:title"`
-	State    *string `gorm:"column:state"`
 	Subject  *string `gorm:"column:subject"`
 	ParentID *string `gorm:"column:parent_id"`
 	Pathlev  int     `gorm:"column:pathlev"`
@@ -46,6 +45,7 @@ type Version struct {
 	ExpirationTime *int64  `gorm:"column:expiration_time"`
 	RevocationTime *int64  `gorm:"column:revocation_time"`
 	Alarm          *int8   `gorm:"column:alarm"`
+	State          *string `gorm:"column:state"`
 }
 
 func (Version) TableName() string { return "version" }
@@ -74,8 +74,9 @@ func GetCertificateByCertID(certID string) (*Certificate, error) {
 	return &c, err
 }
 
-func UpdateCertificateState(certID, state string) error {
-	return mysql.OrmDB.Model(&Certificate{}).
+// UpdateVersionState 更新某证书所有版本的 state
+func UpdateVersionState(certID, state string) error {
+	return mysql.OrmDB.Model(&Version{}).
 		Where("certid = ?", certID).
 		Update("state", state).Error
 }
@@ -190,10 +191,10 @@ func SaveCertBundle(cert Certificate, key *PrivateKey, version Version, account 
 	})
 }
 
-// RevokeCertTx 事务吊销
-func RevokeCertTx(certID, state string, revocationTime int64) error {
+// RevokeCertTx 事务吊销：只更新 version
+func RevokeCertTx(certID string, state string, revocationTime int64) error {
 	return mysql.OrmDB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&Certificate{}).
+		if err := tx.Model(&Version{}).
 			Where("certid = ?", certID).
 			Update("state", state).Error; err != nil {
 			return err
@@ -244,7 +245,7 @@ func ListRevokedByIssuer(issuerID string) ([]Version, error) {
 	err := mysql.OrmDB.
 		Table("version").
 		Joins("JOIN certificate ON certificate.certid = version.certid").
-		Where("certificate.parent_id = ? AND version.revocation_time IS NOT NULL", issuerID).
+		Where("certificate.parent_id = ? AND version.state = ?", issuerID, "R").
 		Find(&list).Error
 	return list, err
 }

@@ -61,7 +61,6 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 		CertID:   certID,
 		UserID:   userID,
 		Title:    cfg.Title,
-		State:    &state,
 		Subject:  &subject,
 		ParentID: nil,
 		Pathlev:  PathLevCA,
@@ -82,6 +81,7 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
 		Alarm:          &alarm,
+		State:          &state,
 	}
 
 	if err := models.SaveCertBundle(certRec, keyRec, version, account); err != nil {
@@ -156,7 +156,6 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 		CertID:   certID,
 		UserID:   userID,
 		Title:    cfg.Title,
-		State:    &state,
 		Subject:  &subject,
 		ParentID: &parentID,
 		Pathlev:  PathLevInter,
@@ -177,6 +176,7 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
 		Alarm:          &alarm,
+		State:          &state,
 	}
 
 	if err := models.SaveCertBundle(certRec, keyRec, version, account); err != nil {
@@ -253,7 +253,6 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		CertID:   certID,
 		UserID:   userID,
 		Title:    cfg.Title,
-		State:    &state,
 		Subject:  &subject,
 		ParentID: &issuerID,
 		Pathlev:  PathLevLeaf,
@@ -278,6 +277,7 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
 		Alarm:          &alarm,
+		State:          &state,
 	}
 
 	if err := models.SaveCertBundle(certRec, keyRec, version, account); err != nil {
@@ -522,6 +522,7 @@ func renewCert(certID string, expiry int, isCA, selfSign bool) (int, error) {
 	serial := newCert.SerialNumber.Text(16)
 	eff := newCert.NotBefore.UnixMilli()
 	exp := newCert.NotAfter.UnixMilli()
+	state := StateValid
 	alarm := int8(0)
 
 	newVer := models.Version{
@@ -533,6 +534,7 @@ func renewCert(certID string, expiry int, isCA, selfSign bool) (int, error) {
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
 		Alarm:          &alarm,
+		State:          &state,
 	}
 
 	// 9. 事务写入
@@ -676,6 +678,7 @@ type VersionItem struct {
 	ExpirationTime *int64  `json:"expirationTime"`
 	RevocationTime *int64  `json:"revocationTime,omitempty"`
 	Alarm          *int8   `json:"alarm"`
+	State          *string `json:"state"`
 }
 
 // ListCertsByGenre 按类型列出证书，带最新版本信息
@@ -692,7 +695,6 @@ func ListCertsByGenre(genre int, userID string) ([]CertListItem, error) {
 			CertID:   c.CertID,
 			Title:    c.Title,
 			Subject:  c.Subject,
-			State:    c.State,
 			ParentID: c.ParentID,
 			Pathlev:  c.Pathlev,
 			Genre:    c.Genre,
@@ -704,6 +706,7 @@ func ListCertsByGenre(genre int, userID string) ([]CertListItem, error) {
 			item.NotBefore = v.EffectiveTime
 			item.NotAfter = v.ExpirationTime
 			item.Alarm = v.Alarm
+			item.State = v.State
 		}
 		items = append(items, item)
 	}
@@ -724,7 +727,6 @@ func ListCertsByGenres(genres []int, userID string) ([]CertListItem, error) {
 			CertID:   c.CertID,
 			Title:    c.Title,
 			Subject:  c.Subject,
-			State:    c.State,
 			ParentID: c.ParentID,
 			Pathlev:  c.Pathlev,
 			Genre:    c.Genre,
@@ -736,6 +738,7 @@ func ListCertsByGenres(genres []int, userID string) ([]CertListItem, error) {
 			item.NotBefore = v.EffectiveTime
 			item.NotAfter = v.ExpirationTime
 			item.Alarm = v.Alarm
+			item.State = v.State
 		}
 		items = append(items, item)
 	}
@@ -766,6 +769,7 @@ func ListCertVersionsSvc(certID string) ([]VersionItem, error) {
 			ExpirationTime: v.ExpirationTime,
 			RevocationTime: v.RevocationTime,
 			Alarm:          v.Alarm,
+			State:          v.State,
 		})
 	}
 	return items, nil
@@ -815,7 +819,6 @@ func FindRootCASvc(certID string) (*RootInfo, error) {
 		CertID:  root.CertID,
 		Title:   root.Title,
 		Subject: root.Subject,
-		State:   root.State,
 		Genre:   root.Genre,
 		Pathlev: root.Pathlev,
 		Chain:   chain,
@@ -827,6 +830,7 @@ func FindRootCASvc(certID string) (*RootInfo, error) {
 		info.Serial = v.Serial
 		info.NotBefore = v.EffectiveTime
 		info.NotAfter = v.ExpirationTime
+		info.State = v.State
 	}
 
 	return info, nil
