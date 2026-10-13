@@ -1,6 +1,6 @@
 module spki
 
-go 1.22.0
+go 1.25
 
 require (
 	github.com/cloudwego/hertz v0.9.6

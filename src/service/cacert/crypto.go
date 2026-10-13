@@ -181,6 +181,10 @@ func parseExtKeyUsage(list []string) ([]x509.ExtKeyUsage, error) {
 			out = append(out, x509.ExtKeyUsageCodeSigning)
 		case "emailProtection":
 			out = append(out, x509.ExtKeyUsageEmailProtection)
+		case "timeStamping":
+			out = append(out, x509.ExtKeyUsageTimeStamping)
+		case "ocspSigning":
+			out = append(out, x509.ExtKeyUsageOCSPSigning)
 		default:
 			return nil, fmt.Errorf("unsupported extKeyUsage: %s", s)
 		}
