@@ -229,35 +229,3 @@ type RootInfo struct {
 	NotAfter  *int64   `json:"notAfter,omitempty"`
 	Chain     []string `json:"chain"`
 }
-
-// ListCertsByGenre 按类型列出证书，带最新版本信息
-// genre = -1 时返回全部
-func ListCertsByGenre(genre int, userID string) ([]CertListItem, error) {
-	certs, err := models.ListCertificatesByGenre(genre, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]CertListItem, 0, len(certs))
-	for _, c := range certs {
-		item := CertListItem{
-			CertID:   c.CertID,
-			Title:    c.Title,
-			Subject:  c.Subject,
-			ParentID: c.ParentID,
-			Pathlev:  c.Pathlev,
-			Genre:    c.Genre,
-		}
-		v, err := models.GetLatestVersion(c.CertID)
-		if err == nil && v != nil {
-			item.Revision = v.Revision
-			item.Serial = v.Serial
-			item.NotBefore = v.EffectiveTime
-			item.NotAfter = v.ExpirationTime
-			item.Alarm = v.Alarm
-			item.State = v.State
-		}
-		items = append(items, item)
-	}
-	return items, nil
-}

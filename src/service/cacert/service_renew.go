@@ -191,6 +191,9 @@ func buildRenewConfig(cert *models.Certificate, oldCert *x509.Certificate, expir
 		for _, ip := range oldCert.IPAddresses {
 			cfg.AltNames.IP = append(cfg.AltNames.IP, ip.String())
 		}
+		for _, u := range oldCert.URIs {
+			cfg.AltNames.URI = append(cfg.AltNames.URI, u.String())
+		}
 	}
 
 	if isCA && oldCert.MaxPathLen >= 0 {

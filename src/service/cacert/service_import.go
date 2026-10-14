@@ -148,13 +148,15 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		Fingerprint: &keyFP,
 		CreateTime:  now,
 	}
+
+	certPEM := string(pemEncode("CERTIFICATE", cert.Raw))
 	version := models.Version{
 		Revision:       &rev,
 		CertID:         &certID,
 		KeyID:          &keyID,
 		Serial:         &serial,
 		Fingerprint:    &certFP,
-		Cert:           strPtr(req.CertPem),
+		Cert:           strPtr(certPEM),
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
 		Alarm:          &alarm,
