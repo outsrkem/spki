@@ -298,6 +298,9 @@ func signCert(subjectKey any, parentCert *x509.Certificate, parentSigner crypto.
 		DNSNames:              cfg.DNSNames,
 		IPAddresses:           ips,
 		EmailAddresses:        cfg.EmailAddresses,
+		CRLDistributionPoints: cfg.CRLDistributionPoints,
+		OCSPServer:            cfg.OCSPServer,
+		IssuingCertificateURL: cfg.IssuingCertificateURL,
 	}
 	if isCA {
 		tpl.AuthorityKeyId = ski

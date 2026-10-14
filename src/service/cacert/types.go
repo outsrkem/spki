@@ -18,20 +18,23 @@ type Names struct {
 
 // CertConfig 通用证书配置（CA、中间 CA、末端证书共用）
 type CertConfig struct {
-	Title                *string  `json:"title,omitempty"`
-	IssuerID             string   `json:"issuerId,omitempty"`
-	ParentID             string   `json:"parentId,omitempty"`
-	Key                  KeySpec  `json:"key"`
-	Names                Names    `json:"names"`
-	Expiry               int      `json:"expiry"`
-	SubjectKeyIdentifier string   `json:"subjectKeyIdentifier"`
-	KeyUsage             []string `json:"keyUsage,omitempty"`
-	ExtKeyUsage          []string `json:"extKeyUsage,omitempty"`
-	DNSNames             []string `json:"dnsNames,omitempty"`
-	IPAddresses          []string `json:"ipAddresses,omitempty"`
-	EmailAddresses       []string `json:"emailAddresses,omitempty"`
-	PathLen              *int     `json:"pathLen,omitempty"`
-	CSRPem               string   `json:"csrpem,omitempty"`
+	Title                 *string  `json:"title,omitempty"`
+	IssuerID              string   `json:"issuerId,omitempty"`
+	ParentID              string   `json:"parentId,omitempty"`
+	Key                   KeySpec  `json:"key"`
+	Names                 Names    `json:"names"`
+	Expiry                int      `json:"expiry"`
+	SubjectKeyIdentifier  string   `json:"subjectKeyIdentifier"`
+	KeyUsage              []string `json:"keyUsage,omitempty"`
+	ExtKeyUsage           []string `json:"extKeyUsage,omitempty"`
+	CRLDistributionPoints []string `json:"crlDistributionPoints,omitempty"`
+	OCSPServer            []string `json:"ocspServer,omitempty"`
+	IssuingCertificateURL []string `json:"issuingCertificateURL,omitempty"`
+	DNSNames              []string `json:"dnsNames,omitempty"`
+	IPAddresses           []string `json:"ipAddresses,omitempty"`
+	EmailAddresses        []string `json:"emailAddresses,omitempty"`
+	PathLen               *int     `json:"pathLen,omitempty"`
+	CSRPem                string   `json:"csrpem,omitempty"`
 }
 
 // 状态常量

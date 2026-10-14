@@ -70,7 +70,7 @@ func BuildCRL(issuerID string) (string, error) {
 	}
 
 	template := &x509.RevocationList{
-		Number:                    big.NewInt(1),
+		Number:                    big.NewInt(time.Now().UnixMilli()),
 		ThisUpdate:                time.Now(),
 		NextUpdate:                time.Now().Add(7 * 24 * time.Hour),
 		RevokedCertificateEntries: entries,
