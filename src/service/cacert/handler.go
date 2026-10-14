@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"spki/src/models"
 	"spki/src/pkg/answer"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -285,4 +286,30 @@ func FindRootCA() app.HandlerFunc {
 // Query 查询参数
 type Query struct {
 	Genre []int `query:"genre"`
+}
+
+func ExportCertBundle() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		certID := c.Param("id")
+
+		cert, err := models.GetCertificateByCertID(certID)
+		if err != nil || cert == nil {
+			c.JSON(http.StatusNotFound, answer.ResBody("404", "certificate not found", ""))
+			return
+		}
+		if cert.Genre != GenreLeaf {
+			c.JSON(http.StatusForbidden, answer.ResBody("403", "CA private key cannot be downloaded", ""))
+			return
+		}
+
+		zipData, zipName, err := GetCertZip(certID)
+		if err != nil {
+			hlog.Error("ExportCertBundle: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+
+		c.Header("Content-Disposition", "attachment; filename=\""+zipName+"\"")
+		c.Data(http.StatusOK, "application/zip", zipData)
+	}
 }
