@@ -23,6 +23,7 @@ func Routes(r *server.Hertz) {
 	// CA
 	r.POST("/spki/ca/init", cacert.InitCa())                    // 初始化根 CA
 	r.POST("/spki/ca/intermediate", cacert.IssueIntermediate()) // 签发中间 CA
+	r.POST("/v1/spki/ca/import", cacert.ImportCA())             // 导入CA
 
 	r.POST("/spki/cert/endentity", cacert.IssueEndEntity()) // 签发末端证书
 	r.GET("/spki/cert/list", cacert.ListCert())             // 列出证书，支持 ?genre=1&genre=2

@@ -308,6 +308,18 @@ func ListCertificatesByGenres(genres []int, userID string) ([]Certificate, error
 	return list, err
 }
 
+// FindCASubject 按 Subject 查 CA（只查根 CA 和中间 CA）
+func FindCASubject(subject string) (*Certificate, error) {
+	var c Certificate
+	err := mysql.OrmDB.
+		Where("subject = ? AND genre IN (?, ?)", subject, 1, 2).
+		First(&c).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &c, err
+}
+
 // ---------- 工具 ----------
 
 func strPtrIf(s string) *string {

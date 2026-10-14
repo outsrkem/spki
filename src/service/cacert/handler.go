@@ -313,3 +313,36 @@ func ExportCertBundle() app.HandlerFunc {
 		c.Data(http.StatusOK, "application/zip", zipData)
 	}
 }
+
+// ---------- 导入 CA ----------
+
+// ImportCA POST /spki/ca/import
+// 只导入根 CA 或中间 CA
+func ImportCA() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		var req ImportCAReq
+		if err := c.BindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "请求体错误: "+err.Error(), ""))
+			return
+		}
+		if req.CertPem == "" {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "certPem is required", ""))
+			return
+		}
+		if req.KeyPem == "" {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "keyPem is required", ""))
+			return
+		}
+
+		userID := c.GetString("userId")
+		account := c.GetString("account")
+
+		resp, err := ImportCASvc(userID, account, &req)
+		if err != nil {
+			hlog.Error("ImportCA: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+		c.JSON(http.StatusCreated, answer.ResBody("200", "", resp))
+	}
+}

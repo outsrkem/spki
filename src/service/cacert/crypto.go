@@ -1,6 +1,7 @@
 package cacert
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -400,4 +401,64 @@ func formatSubject(n pkix.Name) string {
 	}
 
 	return b.String()
+}
+
+// ---------- 导入辅助 ----------
+
+// parseSingleCertPEM 解析单个 X.509 证书 PEM
+// 只接受 CERTIFICATE 类型，拒绝证书链
+func parseSingleCertPEM(pemStr string) (*x509.Certificate, error) {
+	block, rest := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, errors.New("invalid cert PEM")
+	}
+	if block.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf("unsupported cert PEM type: %s, only CERTIFICATE is supported", block.Type)
+	}
+	if len(rest) > 0 {
+		if b, _ := pem.Decode(rest); b != nil {
+			return nil, errors.New("only single certificate is supported")
+		}
+	}
+	return x509.ParseCertificate(block.Bytes)
+}
+
+// parsePKCS8Key 解析 PKCS#8 私钥 PEM
+// 只支持未加密的 PKCS#8
+func parsePKCS8Key(pemStr string) (crypto.Signer, error) {
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, errors.New("invalid key PEM")
+	}
+	if block.Type != "PRIVATE KEY" {
+		return nil, fmt.Errorf("unsupported key PEM type: %s, only PKCS#8 (PRIVATE KEY) is supported", block.Type)
+	}
+	if block.Headers["Proc-Type"] == "4,ENCRYPTED" {
+		return nil, errors.New("encrypted PEM is not supported")
+	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse PKCS#8: %w", err)
+	}
+	signer, ok := key.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("not a signer: %T", key)
+	}
+	return signer, nil
+}
+
+// matchCertAndKey 校验私钥和证书是否匹配
+func matchCertAndKey(cert *x509.Certificate, signer crypto.Signer) error {
+	certPubDER, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
+	if err != nil {
+		return err
+	}
+	keyPubDER, err := x509.MarshalPKIXPublicKey(signer.Public())
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(certPubDER, keyPubDER) {
+		return errors.New("private key does not match certificate")
+	}
+	return nil
 }
