@@ -124,11 +124,13 @@ func validateConfig(cfg *CertConfig) error {
 	if cfg.SubjectKeyIdentifier == "hash" {
 		cfg.SubjectKeyIdentifier = "sha1"
 	}
+
 	switch cfg.SubjectKeyIdentifier {
 	case "sha1", "sha256":
 	default:
 		return fmt.Errorf("unsupported subjectKeyIdentifier: %q", cfg.SubjectKeyIdentifier)
 	}
+
 	switch cfg.Key.Algo {
 	case "rsa":
 		if cfg.Key.Size < 2048 {
@@ -144,6 +146,7 @@ func validateConfig(cfg *CertConfig) error {
 	default:
 		return fmt.Errorf("unsupported key algorithm: %q", cfg.Key.Algo)
 	}
+
 	return nil
 }
 
@@ -328,15 +331,27 @@ func signCert(subjectKey any, parentCert *x509.Certificate, parentSigner crypto.
 		if !ok {
 			return nil, fmt.Errorf("subject key does not implement crypto.Signer: %T", subjectKey)
 		}
+
+		sigAlgo, err := chooseSignatureAlgorithm(cfg.SignatureAlgorithm, signer)
+		if err != nil {
+			return nil, err
+		}
+		tpl.SignatureAlgorithm = sigAlgo
 		tpl.AuthorityKeyId = ski
 		return x509.CreateCertificate(rand.Reader, &tpl, &tpl, pub, signer)
 	}
 
 	// 父签
-	tpl.AuthorityKeyId = parentCert.SubjectKeyId
 	if parentSigner == nil {
 		return nil, errors.New("parent signer is nil")
 	}
+
+	sigAlgo, err := chooseSignatureAlgorithm(cfg.SignatureAlgorithm, parentSigner)
+	if err != nil {
+		return nil, err
+	}
+	tpl.SignatureAlgorithm = sigAlgo
+	tpl.AuthorityKeyId = parentCert.SubjectKeyId
 	return x509.CreateCertificate(rand.Reader, &tpl, parentCert, pub, parentSigner)
 }
 
@@ -377,6 +392,58 @@ func strPtrIf(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// chooseSignatureAlgorithm 根据请求和签名者私钥类型选签名算法
+// name 为空时返回 UnknownSignatureAlgorithm，让 Go 自动选
+func chooseSignatureAlgorithm(name string, signer crypto.Signer) (x509.SignatureAlgorithm, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return x509.UnknownSignatureAlgorithm, nil
+	}
+
+	switch signer.Public().(type) {
+	case *rsa.PublicKey:
+		switch name {
+		case "sha256":
+			return x509.SHA256WithRSA, nil
+		case "sha384":
+			return x509.SHA384WithRSA, nil
+		case "sha512":
+			return x509.SHA512WithRSA, nil
+		case "sha256pss":
+			return x509.SHA256WithRSAPSS, nil
+		case "sha384pss":
+			return x509.SHA384WithRSAPSS, nil
+		case "sha512pss":
+			return x509.SHA512WithRSAPSS, nil
+		default:
+			return 0, fmt.Errorf("unsupported RSA signature algorithm: %s", name)
+		}
+
+	case *ecdsa.PublicKey:
+		switch name {
+		case "sha256":
+			return x509.ECDSAWithSHA256, nil
+		case "sha384":
+			return x509.ECDSAWithSHA384, nil
+		case "sha512":
+			return x509.ECDSAWithSHA512, nil
+		default:
+			return 0, fmt.Errorf("unsupported ECDSA signature algorithm: %s", name)
+		}
+
+	case ed25519.PublicKey:
+		switch name {
+		case "ed25519":
+			return x509.PureEd25519, nil
+		default:
+			return 0, fmt.Errorf("unsupported Ed25519 signature algorithm: %s", name)
+		}
+
+	default:
+		return 0, fmt.Errorf("unsupported signer type: %T", signer.Public())
+	}
 }
 
 // formatSubject 把 pkix.Name 转成 OpenSSL -subj 风格

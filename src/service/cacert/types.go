@@ -38,6 +38,7 @@ type CertConfig struct {
 	Names                 Names    `json:"names"`
 	Expiry                Expiry   `json:"expiry"`
 	SubjectKeyIdentifier  string   `json:"subjectKeyIdentifier"`
+	SignatureAlgorithm    string   `json:"signatureAlgorithm,omitempty"`
 	KeyUsage              []string `json:"keyUsage,omitempty"`
 	ExtKeyUsage           []string `json:"extKeyUsage,omitempty"`
 	CRLDistributionPoints []string `json:"crlDistributionPoints,omitempty"`
