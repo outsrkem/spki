@@ -186,10 +186,10 @@ func buildRenewConfig(cert *models.Certificate, oldCert *x509.Certificate, expir
 
 	if !isCA {
 		cfg.ExtKeyUsage = extKeyUsageToStrings(oldCert.ExtKeyUsage)
-		cfg.DNSNames = oldCert.DNSNames
-		cfg.EmailAddresses = oldCert.EmailAddresses
+		cfg.AltNames.DNS = oldCert.DNSNames
+		cfg.AltNames.Email = oldCert.EmailAddresses
 		for _, ip := range oldCert.IPAddresses {
-			cfg.IPAddresses = append(cfg.IPAddresses, ip.String())
+			cfg.AltNames.IP = append(cfg.AltNames.IP, ip.String())
 		}
 	}
 

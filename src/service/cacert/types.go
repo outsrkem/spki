@@ -16,6 +16,13 @@ type Names struct {
 	OU string  `json:"OU"`
 }
 
+type AltNames struct {
+	DNS   []string `json:"dns,omitempty"`
+	IP    []string `json:"ip,omitempty"`
+	Email []string `json:"email,omitempty"`
+	URI   []string `json:"uri,omitempty"`
+}
+
 // CertConfig 通用证书配置（CA、中间 CA、末端证书共用）
 type CertConfig struct {
 	Title                 *string  `json:"title,omitempty"`
@@ -30,9 +37,7 @@ type CertConfig struct {
 	CRLDistributionPoints []string `json:"crlDistributionPoints,omitempty"`
 	OCSPServer            []string `json:"ocspServer,omitempty"`
 	IssuingCertificateURL []string `json:"issuingCertificateURL,omitempty"`
-	DNSNames              []string `json:"dnsNames,omitempty"`
-	IPAddresses           []string `json:"ipAddresses,omitempty"`
-	EmailAddresses        []string `json:"emailAddresses,omitempty"`
+	AltNames              AltNames `json:"alt_names,omitempty"`
 	PathLen               *int     `json:"pathLen,omitempty"`
 	CSRPem                string   `json:"csrpem,omitempty"`
 }

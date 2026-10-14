@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -275,13 +276,22 @@ func signCert(subjectKey any, parentCert *x509.Certificate, parentSigner crypto.
 		return nil, err
 	}
 
-	ips := make([]net.IP, 0, len(cfg.IPAddresses))
-	for _, s := range cfg.IPAddresses {
+	ips := make([]net.IP, 0, len(cfg.AltNames.IP))
+	for _, s := range cfg.AltNames.IP {
 		ip := net.ParseIP(s)
 		if ip == nil {
 			return nil, fmt.Errorf("invalid IP: %s", s)
 		}
 		ips = append(ips, ip)
+	}
+
+	uris := make([]*url.URL, 0, len(cfg.AltNames.URI))
+	for _, s := range cfg.AltNames.URI {
+		u, err := url.Parse(s)
+		if err != nil {
+			return nil, fmt.Errorf("invalid URI: %s", s)
+		}
+		uris = append(uris, u)
 	}
 
 	now := time.Now()
@@ -295,13 +305,15 @@ func signCert(subjectKey any, parentCert *x509.Certificate, parentSigner crypto.
 		BasicConstraintsValid: true,
 		IsCA:                  isCA,
 		SubjectKeyId:          ski,
-		DNSNames:              cfg.DNSNames,
+		DNSNames:              cfg.AltNames.DNS,
 		IPAddresses:           ips,
-		EmailAddresses:        cfg.EmailAddresses,
+		EmailAddresses:        cfg.AltNames.Email,
 		CRLDistributionPoints: cfg.CRLDistributionPoints,
 		OCSPServer:            cfg.OCSPServer,
 		IssuingCertificateURL: cfg.IssuingCertificateURL,
+		URIs:                  uris,
 	}
+
 	if isCA {
 		tpl.AuthorityKeyId = ski
 		if cfg.PathLen != nil {
