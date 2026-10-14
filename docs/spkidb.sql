@@ -1,17 +1,7 @@
 /*
- Navicat Premium Data Transfer
-
- Source Server         : 127.0.0.1
- Source Server Type    : MySQL
- Source Server Version : 50744
- Source Host           : 127.0.0.1:3306
- Source Schema         : spkidb
-
  Target Server Type    : MySQL
  Target Server Version : 50744
  File Encoding         : 65001
-
- Date: 13/10/2026 22:26:14
 */
 
 SET NAMES utf8mb4;
