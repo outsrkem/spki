@@ -462,3 +462,19 @@ func matchCertAndKey(cert *x509.Certificate, signer crypto.Signer) error {
 	}
 	return nil
 }
+
+// calcCertFingerprint 证书 SHA-256 指纹
+func calcCertFingerprint(cert *x509.Certificate) string {
+	sum := sha256.Sum256(cert.Raw)
+	return fmt.Sprintf("%x", sum[:])
+}
+
+// calcPubKeyFingerprint 公钥 SHA-256 指纹
+func calcPubKeyFingerprint(signer crypto.Signer) (string, error) {
+	der, err := x509.MarshalPKIXPublicKey(signer.Public())
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(der)
+	return fmt.Sprintf("%x", sum[:]), nil
+}

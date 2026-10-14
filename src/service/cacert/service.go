@@ -48,6 +48,13 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 	}
 	certPEM := pemEncode("CERTIFICATE", der)
 
+	// 指纹
+	certFP := calcCertFingerprint(cert)
+	keyFP, err := calcPubKeyFingerprint(key)
+	if err != nil {
+		return "", fmt.Errorf("calc key fingerprint: %w", err)
+	}
+
 	certID := uuid4.Uuid4Str()
 	keyID := uuid4.Uuid4Str()
 	rev := 1
@@ -70,16 +77,18 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 		Genre:    GenreRoot,
 	}
 	keyRec := &models.PrivateKey{
-		KeyID:      keyID,
-		PrivateKey: encKey,
-		Passphrase: encPassphrase,
-		CreateTime: now,
+		KeyID:       keyID,
+		PrivateKey:  encKey,
+		Passphrase:  encPassphrase,
+		Fingerprint: &keyFP,
+		CreateTime:  now,
 	}
 	version := models.Version{
 		Revision:       &rev,
 		CertID:         &certID,
 		KeyID:          &keyID,
 		Serial:         &serial,
+		Fingerprint:    &certFP,
 		Cert:           strPtr(string(certPEM)),
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
@@ -143,6 +152,13 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 	}
 	certPEM := pemEncode("CERTIFICATE", der)
 
+	// 指纹
+	certFP := calcCertFingerprint(cert)
+	keyFP, err := calcPubKeyFingerprint(key)
+	if err != nil {
+		return "", fmt.Errorf("calc key fingerprint: %w", err)
+	}
+
 	certID := uuid4.Uuid4Str()
 	keyID := uuid4.Uuid4Str()
 	rev := 1
@@ -165,16 +181,18 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 		Genre:    GenreInter,
 	}
 	keyRec := &models.PrivateKey{
-		KeyID:      keyID,
-		PrivateKey: encKey,
-		Passphrase: encPassphrase,
-		CreateTime: now,
+		KeyID:       keyID,
+		PrivateKey:  encKey,
+		Passphrase:  encPassphrase,
+		Fingerprint: &keyFP,
+		CreateTime:  now,
 	}
 	version := models.Version{
 		Revision:       &rev,
 		CertID:         &certID,
 		KeyID:          &keyID,
 		Serial:         &serial,
+		Fingerprint:    &certFP,
 		Cert:           strPtr(string(certPEM)),
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
@@ -219,6 +237,7 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	var key crypto.Signer
 	var encKey string
 	var encPassphrase string
+	var keyFP string
 	if cfg.CSRPem == "" {
 		key, err = createKey(cfg.Key.Algo, cfg.Key.Size)
 		if err != nil {
@@ -227,6 +246,10 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		encKey, encPassphrase, err = encryptPrivateKey(key)
 		if err != nil {
 			return "", fmt.Errorf("encrypt private key: %w", err)
+		}
+		keyFP, err = calcPubKeyFingerprint(key)
+		if err != nil {
+			return "", fmt.Errorf("calc key fingerprint: %w", err)
 		}
 	}
 
@@ -239,6 +262,8 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		return "", err
 	}
 	certPEM := pemEncode("CERTIFICATE", der)
+
+	certFP := calcCertFingerprint(cert)
 
 	certID := uuid4.Uuid4Str()
 	keyID := uuid4.Uuid4Str()
@@ -265,10 +290,11 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	var keyRec *models.PrivateKey
 	if cfg.CSRPem == "" {
 		keyRec = &models.PrivateKey{
-			KeyID:      keyID,
-			PrivateKey: encKey,
-			Passphrase: encPassphrase,
-			CreateTime: now,
+			KeyID:       keyID,
+			PrivateKey:  encKey,
+			Passphrase:  encPassphrase,
+			Fingerprint: &keyFP,
+			CreateTime:  now,
 		}
 	}
 	version := models.Version{
@@ -276,6 +302,7 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		CertID:         &certID,
 		KeyID:          &keyID,
 		Serial:         &serial,
+		Fingerprint:    &certFP,
 		Cert:           strPtr(string(certPEM)),
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
@@ -514,6 +541,8 @@ func renewCert(certID string, expiry int, isCA, selfSign bool) (int, error) {
 	}
 	certPEM := pemEncode("CERTIFICATE", der)
 
+	certFP := calcCertFingerprint(newCert)
+
 	// 7. 取下一个 revision
 	maxRev, err := models.GetMaxRevision(certID)
 	if err != nil {
@@ -533,6 +562,7 @@ func renewCert(certID string, expiry int, isCA, selfSign bool) (int, error) {
 		CertID:         &certID,
 		KeyID:          oldVer.KeyID,
 		Serial:         &serial,
+		Fingerprint:    &certFP,
 		Cert:           strPtr(string(certPEM)),
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
@@ -988,6 +1018,14 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		return nil, fmt.Errorf("parse cert: %w", err)
 	}
 
+	// 1.5 证书指纹判重
+	certFP := calcCertFingerprint(cert)
+	if existing, err := models.GetVersionByFingerprint(certFP); err != nil {
+		return nil, fmt.Errorf("check cert fingerprint: %w", err)
+	} else if existing != nil {
+		return nil, fmt.Errorf("certificate already imported: certId=%s", *existing.CertID)
+	}
+
 	// 2. 必须是 CA
 	if !cert.IsCA {
 		return nil, errors.New("only CA certificates can be imported")
@@ -1011,6 +1049,17 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 	signer, err := parsePKCS8Key(req.KeyPem)
 	if err != nil {
 		return nil, fmt.Errorf("parse key: %w", err)
+	}
+
+	// 4.5 私钥指纹判重（用公钥指纹代表私钥）
+	keyFP, err := calcPubKeyFingerprint(signer)
+	if err != nil {
+		return nil, fmt.Errorf("calc key fingerprint: %w", err)
+	}
+	if existing, err := models.GetPrivateKeyByFingerprint(keyFP); err != nil {
+		return nil, fmt.Errorf("check key fingerprint: %w", err)
+	} else if existing != nil {
+		return nil, fmt.Errorf("private key already imported: keyId=%s", existing.KeyID)
 	}
 
 	// 5. 校验私钥和证书匹配
@@ -1075,16 +1124,18 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		Genre:    genre,
 	}
 	keyRec := &models.PrivateKey{
-		KeyID:      keyID,
-		PrivateKey: encKey,
-		Passphrase: encPassphrase,
-		CreateTime: now,
+		KeyID:       keyID,
+		PrivateKey:  encKey,
+		Passphrase:  encPassphrase,
+		Fingerprint: &keyFP,
+		CreateTime:  now,
 	}
 	version := models.Version{
 		Revision:       &rev,
 		CertID:         &certID,
 		KeyID:          &keyID,
 		Serial:         &serial,
+		Fingerprint:    &certFP,
 		Cert:           strPtr(req.CertPem),
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,

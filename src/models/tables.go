@@ -25,11 +25,12 @@ type Certificate struct {
 func (Certificate) TableName() string { return "certificate" }
 
 type PrivateKey struct {
-	ID         int    `gorm:"column:id;primaryKey;autoIncrement"`
-	KeyID      string `gorm:"column:keyid"`
-	PrivateKey string `gorm:"column:private_key"`
-	Passphrase string `gorm:"column:passphrase"` // 加密后的口令
-	CreateTime int64  `gorm:"column:create_time"`
+	ID          int     `gorm:"column:id;primaryKey;autoIncrement"`
+	KeyID       string  `gorm:"column:keyid"`
+	PrivateKey  string  `gorm:"column:private_key"`
+	Passphrase  string  `gorm:"column:passphrase"` // 加密后的口令
+	Fingerprint *string `gorm:"column:fingerprint"`
+	CreateTime  int64   `gorm:"column:create_time"`
 }
 
 func (PrivateKey) TableName() string { return "private_key" }
@@ -40,6 +41,7 @@ type Version struct {
 	CertID         *string `gorm:"column:certid"`
 	KeyID          *string `gorm:"column:keyid"`
 	Serial         *string `gorm:"column:serial"`
+	Fingerprint    *string `gorm:"column:fingerprint"`
 	Cert           *string `gorm:"column:cert"`
 	EffectiveTime  *int64  `gorm:"column:effective_time"`
 	ExpirationTime *int64  `gorm:"column:expiration_time"`
@@ -318,6 +320,26 @@ func FindCASubject(subject string) (*Certificate, error) {
 		return nil, nil
 	}
 	return &c, err
+}
+
+// GetVersionByFingerprint 按证书指纹查版本
+func GetVersionByFingerprint(fp string) (*Version, error) {
+	var v Version
+	err := mysql.OrmDB.Where("fingerprint = ?", fp).First(&v).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &v, err
+}
+
+// GetPrivateKeyByFingerprint 按公钥指纹查私钥
+func GetPrivateKeyByFingerprint(fp string) (*PrivateKey, error) {
+	var k PrivateKey
+	err := mysql.OrmDB.Where("fingerprint = ?", fp).First(&k).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &k, err
 }
 
 // ---------- 工具 ----------
