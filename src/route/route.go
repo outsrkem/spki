@@ -25,10 +25,9 @@ func Routes(r *server.Hertz) {
 	r.POST("/spki/ca/intermediate", cacert.IssueIntermediate()) // 签发中间 CA
 	r.POST("/v1/spki/ca/import", cacert.ImportCA())             // 导入CA
 
-	r.POST("/spki/cert/endentity", cacert.IssueEndEntity()) // 签发末端证书
-	r.GET("/spki/cert/list", cacert.ListCert())             // 列出证书，支持 ?genre=1&genre=2
-
-	// 单证书操作
+	// 证书操作
+	r.POST("/spki/cert/endentity", cacert.IssueEndEntity())      // 签发末端证书
+	r.GET("/spki/cert/list", cacert.ListCert())                  // 列出证书，支持 ?genre=1&genre=2
 	r.POST("/spki/cert/:id/renew", cacert.RenewCert())           // 续签，只延长有效期
 	r.POST("/spki/cert/:id/revoke", cacert.RevokeCert())         // 吊销
 	r.DELETE("/spki/cert/:id", cacert.DeleteCert())              // 删除，同时删私钥和所有版本
