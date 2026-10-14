@@ -34,5 +34,7 @@ func Routes(r *server.Hertz) {
 	r.GET("/spki/cert/:id/chain", cacert.ExportCertChain())     // 导出链，支持 ?includeRoot=false&onlyRoot=true
 	r.GET("/spki/cert/:id/root", cacert.FindRootCA())           // 从任意证书向上找根 CA
 	r.GET("/spki/cert/:id/versions", cacert.ListCertVersions()) // 列出某证书所有版本
+	r.GET("/spki/cert/:id/bundle", cacert.ExportCertBundle())   // 下载证书含私钥
 	r.GET("/spki/crl", cacert.DownloadCRL())                    // 下载 CRL，参数 ?issuerId=xxx
+
 }
