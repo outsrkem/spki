@@ -42,20 +42,22 @@ func IssueIntermediate() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		var req struct {
 			CertConfig
-			ParentID string `json:"parentId"`
+			Issuer struct {
+				ID string `json:"id"`
+			} `json:"issuer"`
 		}
 		if err := c.BindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", err.Error(), ""))
 			return
 		}
-		if req.ParentID == "" {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "parentId is required", ""))
+		if req.Issuer.ID == "" {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuer.id is required", ""))
 			return
 		}
 		userID := c.GetString("userId")
 		account := c.GetString("account")
 
-		certID, err := IssueIntermediateSvc(userID, account, req.ParentID, &req.CertConfig)
+		certID, err := IssueIntermediateSvc(userID, account, req.Issuer.ID, &req.CertConfig)
 		if err != nil {
 			hlog.Error("IssueIntermediate: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -72,20 +74,22 @@ func IssueEndEntity() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		var req struct {
 			CertConfig
-			IssuerID string `json:"issuerId"`
+			Issuer struct {
+				ID string `json:"id"`
+			} `json:"issuer"`
 		}
 		if err := c.BindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", err.Error(), ""))
 			return
 		}
-		if req.IssuerID == "" {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuerId is required", ""))
+		if req.Issuer.ID == "" {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuer.id is required", ""))
 			return
 		}
 		userID := c.GetString("userId")
 		account := c.GetString("account")
 
-		certID, err := IssueEndEntitySvc(userID, account, req.IssuerID, &req.CertConfig)
+		certID, err := IssueEndEntitySvc(userID, account, req.Issuer.ID, &req.CertConfig)
 		if err != nil {
 			hlog.Error("IssueEndEntity: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))

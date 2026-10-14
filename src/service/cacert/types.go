@@ -34,8 +34,6 @@ type AltNames struct {
 // CertConfig 通用证书配置（CA、中间 CA、末端证书共用）
 type CertConfig struct {
 	Title                 *string  `json:"title,omitempty"`
-	IssuerID              string   `json:"issuerId,omitempty"`
-	ParentID              string   `json:"parentId,omitempty"`
 	Key                   KeySpec  `json:"key"`
 	Names                 Names    `json:"names"`
 	Expiry                Expiry   `json:"expiry"`
