@@ -16,9 +16,9 @@ import (
 // RenewCertSvc 续签统一入口
 //   - 根 CA（parent_id == NULL）→ 自签名
 //   - 中间 CA / 末端证书 → 上级 CA 签
-func RenewCertSvc(certID string, expiry int) (int, error) {
-	if expiry <= 0 {
-		return 0, errors.New("expiry must be > 0")
+func RenewCertSvc(certID string, expiry Expiry) (int, error) {
+	if expiry.Years == 0 && expiry.Months == 0 && expiry.Days == 0 {
+		return 0, errors.New("expiry is required")
 	}
 
 	cert, err := models.GetCertificateByCertID(certID)
@@ -45,7 +45,7 @@ func RenewCertSvc(certID string, expiry int) (int, error) {
 //	selfSign = false → 上级签（中间 CA / 末端证书）
 //	isCA     = true  → CA 证书
 //	isCA     = false → 末端证书
-func renewCert(certID string, expiry int, isCA, selfSign bool) (int, error) {
+func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 	// 1. 查原证书
 	cert, err := models.GetCertificateByCertID(certID)
 	if err != nil || cert == nil {
@@ -153,7 +153,7 @@ func renewCert(certID string, expiry int, isCA, selfSign bool) (int, error) {
 }
 
 // buildRenewConfig 从旧证书还原续期配置
-func buildRenewConfig(cert *models.Certificate, oldCert *x509.Certificate, expiry int, isCA bool) *CertConfig {
+func buildRenewConfig(cert *models.Certificate, oldCert *x509.Certificate, expiry Expiry, isCA bool) *CertConfig {
 	cfg := &CertConfig{
 		Title:                cert.Title,
 		Expiry:               expiry,

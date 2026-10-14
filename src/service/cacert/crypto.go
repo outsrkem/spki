@@ -118,8 +118,8 @@ func validateConfig(cfg *CertConfig) error {
 	if cfg.Names.OU == "" {
 		return errors.New("names.OU is required")
 	}
-	if cfg.Expiry <= 0 {
-		return fmt.Errorf("expiry must be > 0, got %d", cfg.Expiry)
+	if cfg.Expiry.String() == "" {
+		return fmt.Errorf("expiry is required")
 	}
 	if cfg.SubjectKeyIdentifier == "hash" {
 		cfg.SubjectKeyIdentifier = "sha1"
@@ -299,7 +299,7 @@ func signCert(subjectKey any, parentCert *x509.Certificate, parentSigner crypto.
 		SerialNumber:          serial,
 		Subject:               subject,
 		NotBefore:             now.Add(-5 * time.Minute),
-		NotAfter:              now.Add(time.Duration(cfg.Expiry) * 24 * time.Hour),
+		NotAfter:              cfg.Expiry.NotAfter(now),
 		KeyUsage:              ku,
 		ExtKeyUsage:           eku,
 		BasicConstraintsValid: true,

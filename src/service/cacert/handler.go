@@ -186,14 +186,14 @@ func RenewCert() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		certID := c.Param("id")
 		var req struct {
-			Expiry int `json:"expiry"`
+			Expiry Expiry `json:"expiry"`
 		}
 		if err := c.BindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", "请求体错误: "+err.Error(), ""))
 			return
 		}
-		if req.Expiry <= 0 {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "expiry must be > 0", ""))
+		if req.Expiry.Years == 0 && req.Expiry.Months == 0 && req.Expiry.Days == 0 {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "expiry is required", ""))
 			return
 		}
 		rev, err := RenewCertSvc(certID, req.Expiry)
