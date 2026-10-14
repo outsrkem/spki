@@ -41,6 +41,8 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	var encKey string
 	var encPassphrase string
 	var keyFP string
+	var keyIDPtr *string // 新增
+
 	if cfg.CSRPem == "" {
 		key, err = createKey(cfg.Key.Algo, cfg.Key.Size)
 		if err != nil {
@@ -54,6 +56,9 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		if err != nil {
 			return "", fmt.Errorf("calc key fingerprint: %w", err)
 		}
+		// 只有非 CSR 模式才有 keyID
+		keyID := uuid4.Uuid4Str()
+		keyIDPtr = &keyID
 	}
 
 	der, err := signCert(key, issuerCert, issuerSigner, cfg, false)
@@ -69,7 +74,6 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	certFP := calcCertFingerprint(cert)
 
 	certID := uuid4.Uuid4Str()
-	keyID := uuid4.Uuid4Str()
 	rev := 1
 	now := nowMillis()
 
@@ -90,20 +94,22 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		Genre:    GenreLeaf,
 		CertReq:  strPtrIf(cfg.CSRPem),
 	}
+
 	var keyRec *models.PrivateKey
 	if cfg.CSRPem == "" {
 		keyRec = &models.PrivateKey{
-			KeyID:       keyID,
+			KeyID:       *keyIDPtr,
 			PrivateKey:  encKey,
 			Passphrase:  encPassphrase,
 			Fingerprint: &keyFP,
 			CreateTime:  now,
 		}
 	}
+
 	version := models.Version{
 		Revision:       &rev,
 		CertID:         &certID,
-		KeyID:          &keyID,
+		KeyID:          keyIDPtr,
 		Serial:         &serial,
 		Fingerprint:    &certFP,
 		Cert:           strPtr(string(certPEM)),
