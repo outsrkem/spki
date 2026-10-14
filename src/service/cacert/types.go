@@ -84,7 +84,6 @@ type Expiry struct {
 
 // UnmarshalJSON 兼容数字和字符串
 func (e *Expiry) UnmarshalJSON(data []byte) error {
-	fmt.Printf("Expiry.UnmarshalJSON called: %s\n", string(data))
 	// 数字
 	var num int
 	if err := json.Unmarshal(data, &num); err == nil {
