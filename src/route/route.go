@@ -29,7 +29,6 @@ func Routes(r *server.Hertz) {
 	r.POST("/v1/spki/cert/endentity", cacert.IssueEndEntity())     // 签发末端证书
 	r.GET("/v1/spki/cert/list", cacert.ListCert())                 // 列出证书，支持 ?genre=1&genre=2
 	r.POST("/v1/spki/cert/:id/renew", cacert.RenewCert())          // 续签，只延长有效期
-	r.PATCH("/v1/spki/cert/:id/alarm", cacert.SetCertAlarm())      // 证书告警开关
 	r.POST("/v1/spki/cert/:id/revoke", cacert.RevokeCert())        // 吊销
 	r.DELETE("/v1/spki/cert/:id", cacert.DeleteCert())             // 删除，同时删私钥和所有版本
 	r.GET("/v1/spki/cert/:id/chain", cacert.ExportCertChain())     // 导出链，支持 ?includeRoot=false&onlyRoot=true

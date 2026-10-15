@@ -129,7 +129,6 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 	eff := cert.NotBefore.UnixMilli()
 	exp := cert.NotAfter.UnixMilli()
 	state := StateValid
-	alarm := int8(0)
 	rev := 1
 
 	certRec := models.Certificate{
@@ -140,7 +139,6 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		ParentID: parentID,
 		Pathlev:  pathlev,
 		Genre:    genre,
-		Alarm:    &alarm,
 	}
 	keyRec := &models.PrivateKey{
 		KeyID:       keyID,

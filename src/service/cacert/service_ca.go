@@ -50,7 +50,6 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 	exp := cert.NotAfter.UnixMilli()
 	subject := formatSubject(cert.Subject)
 	state := StateValid
-	alarm := int8(0)
 
 	certRec := models.Certificate{
 		CertID:   certID,
@@ -60,7 +59,6 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 		ParentID: nil,
 		Pathlev:  PathLevCA,
 		Genre:    GenreRoot,
-		Alarm:    &alarm,
 	}
 	keyRec := &models.PrivateKey{
 		KeyID:       keyID,
@@ -154,7 +152,6 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 	exp := cert.NotAfter.UnixMilli()
 	subject := formatSubject(cert.Subject)
 	state := StateValid
-	alarm := int8(0)
 
 	certRec := models.Certificate{
 		CertID:   certID,
@@ -164,7 +161,6 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 		ParentID: &parentID,
 		Pathlev:  PathLevInter,
 		Genre:    GenreInter,
-		Alarm:    &alarm,
 	}
 	keyRec := &models.PrivateKey{
 		KeyID:       keyID,

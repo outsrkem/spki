@@ -19,7 +19,6 @@ type Certificate struct {
 	ParentID *string `gorm:"column:parent_id"`
 	Pathlev  int     `gorm:"column:pathlev"`
 	Genre    int     `gorm:"column:genre"`
-	Alarm    *int8   `gorm:"column:alarm"`
 	CertReq  *string `gorm:"column:cert_req"`
 }
 
@@ -340,13 +339,6 @@ func GetPrivateKeyByFingerprint(fp string) (*PrivateKey, error) {
 		return nil, nil
 	}
 	return &k, err
-}
-
-// UpdateCertAlarm 更新证书告警开关
-func UpdateCertAlarm(certID string, alarm int8) error {
-	return mysql.OrmDB.Model(&Certificate{}).
-		Where("certid = ?", certID).
-		Update("alarm", alarm).Error
 }
 
 // ---------- 工具 ----------

@@ -170,7 +170,6 @@ func ListCertsByGenres(offset, limit int, count *int64, genres []int, userID str
 			ParentID: c.ParentID,
 			Pathlev:  c.Pathlev,
 			Genre:    c.Genre,
-			Alarm:    c.Alarm,
 		}
 		v, err := models.GetLatestVersion(c.CertID)
 		if err == nil && v != nil {
