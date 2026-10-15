@@ -52,7 +52,7 @@ type Version struct {
 func (Version) TableName() string { return "version" }
 
 type Creator struct {
-	ID       int     `gorm:"column:id;primaryKey;autoIncrement"`
+	ID       int     `gorm:"column:kid;primaryKey;autoIncrement"`
 	UserID   string  `gorm:"column:user_id"`
 	Name     *string `gorm:"column:name"`
 	SyncTime *int64  `gorm:"column:sync_time"`
