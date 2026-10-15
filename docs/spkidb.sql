@@ -21,13 +21,15 @@ CREATE TABLE `certificate`  (
   `pathlev` tinyint(4) NOT NULL COMMENT '证书层级，ca:0、中间证书：1、服务证书2',
   `genre` tinyint(4) NOT NULL COMMENT '证书类型，根ca:1,中间ca2，服务证书3',
   `cert_req` text CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '证书请求文件',
+  `alarm` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否参与到期告警，0关闭 1开启',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_certid`(`certid`) USING BTREE,
   INDEX `idx_parent_id`(`parent_id`) USING BTREE,
   INDEX `idx_user_id`(`user_id`) USING BTREE,
   INDEX `idx_genre`(`genre`) USING BTREE,
+  INDEX `idx_alarm`(`alarm`) USING BTREE,
   CONSTRAINT `certificate_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `creator` (`user_id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 85 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_bin ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 112 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_bin ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Table structure for creator
@@ -56,7 +58,7 @@ CREATE TABLE `private_key`  (
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uk_pubkey_fingerprint`(`fingerprint`) USING BTREE,
   UNIQUE INDEX `uk_keyid`(`keyid`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 71 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = DYNAMIC;
+) ENGINE = InnoDB AUTO_INCREMENT = 95 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = DYNAMIC;
 
 -- ----------------------------
 -- Table structure for version
@@ -73,17 +75,16 @@ CREATE TABLE `version`  (
   `effective_time` bigint(20) NULL DEFAULT NULL COMMENT '生效时间戳（毫秒）',
   `expiration_time` bigint(20) NULL DEFAULT NULL COMMENT '到期时间戳（毫秒）',
   `revocation_time` bigint(20) NULL DEFAULT NULL COMMENT '吊销时间戳（毫秒）',
-  `alarm` tinyint(1) NULL DEFAULT NULL COMMENT '到期告警，0关闭，1开启',
   `state` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'V' COMMENT 'V有效 R吊销 E过期',
   PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_cert_fingerprint`(`fingerprint`) USING BTREE,
   UNIQUE INDEX `uk_cert_revision`(`certid`, `revision`) USING BTREE,
   INDEX `idx_expiration`(`expiration_time`) USING BTREE,
   INDEX `idx_serial`(`serial`) USING BTREE,
-  UNIQUE INDEX `uk_cert_fingerprint`(`fingerprint`) USING BTREE,
   INDEX `idx_state`(`state`) USING BTREE,
   INDEX `idx_keyid`(`keyid`) USING BTREE,
-  CONSTRAINT `version_ibfk_1` FOREIGN KEY (`certid`) REFERENCES `certificate` (`certid`) ON DELETE RESTRICT ON UPDATE CASCADE,
-  CONSTRAINT `fk_ver_key` FOREIGN KEY (`keyid`) REFERENCES `private_key` (`keyid`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE = InnoDB AUTO_INCREMENT = 87 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = DYNAMIC;
+  CONSTRAINT `fk_ver_key` FOREIGN KEY (`keyid`) REFERENCES `private_key` (`keyid`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `version_ibfk_1` FOREIGN KEY (`certid`) REFERENCES `certificate` (`certid`) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE = InnoDB AUTO_INCREMENT = 115 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = DYNAMIC;
 
 SET FOREIGN_KEY_CHECKS = 1;
