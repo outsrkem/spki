@@ -6,6 +6,7 @@ import (
 
 	"spki/src/models"
 	"spki/src/pkg/answer"
+	"spki/src/pkg/common"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
@@ -220,7 +221,7 @@ func RenewCert() app.HandlerFunc {
 //
 //	?genre=1&genre=2  → 查根 CA + 中间 CA
 //	?genre=3          → 查末端证书
-//	不传               → 全部
+//	不传              → 全部
 func ListCert() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		userID := c.GetString("userId")
@@ -239,17 +240,26 @@ func ListCert() app.HandlerFunc {
 				return
 			}
 		}
+		offset, limit, err := common.GetPagingQuery(c)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "参数错误", ""))
+			return
+		}
 
-		items, err := ListCertsByGenres(query.Genre, userID)
+		count := int64(0)
+		items, err := ListCertsByGenres(offset, limit, &count, query.Genre, userID)
 		if err != nil {
 			hlog.Error("ListCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
 		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
-			"total": len(items),
-			"items": items,
-		}))
+
+		payload := map[string]any{
+			"page_info": answer.SetPageInfo(offset, limit, count),
+			"items":     items,
+		}
+		c.JSON(http.StatusOK, answer.ResBody(answer.EcodeOK, nil, payload))
+
 	}
 }
 

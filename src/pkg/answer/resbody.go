@@ -1,52 +1,63 @@
 package answer
 
 import (
-	"strconv"
 	"time"
 )
 
-// Metadata represents metadata for a response.
+// Metadata represents response metadata including message, timestamp, and error code.
 type Metadata struct {
-	Message interface{} `json:"message"` // A descriptive message.
-	Time    string      `json:"time"`    // Timestamp in string format.
-	Ecode   string      `json:"ecode"`   // Error code string.
+	Message any    `json:"message,omitempty"` // Descriptive message content
+	Time    int64  `json:"time"`              // Response timestamp (millisecond-level Unix time)
+	Ecode   string `json:"ecode"`             // Business error code
 }
 
-// NewResMessage creates a custom response body map with error code, message, and payload.
-func NewResMessage(ecode string, msg interface{}, payload interface{}) map[string]interface{} {
-	body := make(map[string]interface{})
+// Body represents the API response structure.
+type Body struct {
+	Metadata *Metadata `json:"metadata"`          // Response metadata
+	Payload  any       `json:"payload,omitempty"` // Optional response payload
+}
+
+// NewResMessage creates a standardized response body.
+func NewResMessage(ecode string, msg any, payload any) *Body {
+	var body Body
+
+	// Set default success message when empty
 	if msg == "" {
-		msg = "Successfully."
+		msg = "Okay."
 	}
-	metadata := Metadata{
+
+	// Populate metadata (including current timestamp)
+	body.Metadata = &Metadata{
 		Message: msg,
-		Time:    strconv.FormatInt(time.Now().UnixNano()/1e6, 10),
+		Time:    time.Now().UnixNano() / 1e6,
 		Ecode:   ecode,
 	}
-	body["metadata"] = metadata
+
+	// Only set payload when non-empty (leveraging omitempty tag)
 	if payload != "" && payload != nil {
-		body["payload"] = payload
+		body.Payload = payload
 	}
-	return body
+
+	return &body
 }
 
-// ResBody creates a response body map with error code, message, and payload.
-func ResBody(ecode string, msg interface{}, payload interface{}) map[string]interface{} {
+// ResBody is an alias for NewResMessage, maintained for backward compatibility.
+func ResBody(ecode string, msg any, payload any) *Body {
 	return NewResMessage(ecode, msg, payload)
 }
 
-// PageInfo represents pagination information for a data set.
+// PageInfo represents pagination information for dataset traversal.
 type PageInfo struct {
-	Page     int `json:"page"`      // Current page number.
-	PageSize int `json:"page_size"` // Number of items per page.
-	Total    int `json:"total"`     // Total number of items in the data set.
+	Offset int   `json:"offset"` // Current page number (0-based)
+	Limit  int   `json:"limit"`  // Number of items per page
+	Total  int64 `json:"total"`  // Total number of items in dataset
 }
 
-// SetPageInfo creates a PageInfo object with provided pagination information.
-func SetPageInfo(pageSize, page, total int) *PageInfo {
+// SetPageInfo creates a pagination information object.
+func SetPageInfo(offset, limit int, total int64) *PageInfo {
 	return &PageInfo{
-		Page:     page,
-		PageSize: pageSize,
-		Total:    total,
+		Limit:  limit,
+		Offset: offset,
+		Total:  total,
 	}
 }

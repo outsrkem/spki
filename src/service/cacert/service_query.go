@@ -156,8 +156,8 @@ func BuildRootPEM(certID string) (string, error) {
 
 // ListCertsByGenres 按多个类型列出证书
 // genres 为空 → 全部
-func ListCertsByGenres(genres []int, userID string) ([]CertListItem, error) {
-	certs, err := models.ListCertificatesByGenres(genres, userID)
+func ListCertsByGenres(offset, limit int, count *int64, genres []int, userID string) ([]CertListItem, error) {
+	certs, err := models.ListCertificatesByGenres(offset, limit, count, genres, userID)
 	if err != nil {
 		return nil, err
 	}

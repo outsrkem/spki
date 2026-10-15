@@ -295,7 +295,7 @@ func ListCertificatesByGenre(genre int, userID string) ([]Certificate, error) {
 
 // ListCertificatesByGenres 按多个类型列出证书
 // genres 为空 → 全部
-func ListCertificatesByGenres(genres []int, userID string) ([]Certificate, error) {
+func ListCertificatesByGenres(offset, limit int, count *int64, genres []int, userID string) ([]Certificate, error) {
 	var list []Certificate
 	q := mysql.OrmDB.Model(&Certificate{})
 
@@ -306,7 +306,7 @@ func ListCertificatesByGenres(genres []int, userID string) ([]Certificate, error
 		q = q.Where("user_id = ?", userID)
 	}
 
-	err := q.Order("id desc").Find(&list).Error
+	err := q.Count(count).Order("id desc").Offset(offset).Limit(limit).Find(&list).Error
 	return list, err
 }
 
