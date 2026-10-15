@@ -305,7 +305,7 @@ func ListCertificatesByGenres(offset, limit int, count *int64, genres []int, use
 		q = q.Where("user_id = ?", userID)
 	}
 
-	err := q.Count(count).Order("id desc").Offset(offset).Limit(limit).Find(&list).Error
+	err := q.Count(count).Order("kid DESC").Offset(offset).Limit(limit).Find(&list).Error
 	return list, err
 }
 
