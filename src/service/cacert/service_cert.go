@@ -92,6 +92,7 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		ParentID: &issuerID,
 		Pathlev:  PathLevLeaf,
 		Genre:    GenreLeaf,
+		Alarm:    &alarm,
 		CertReq:  strPtrIf(cfg.CSRPem),
 	}
 
@@ -115,7 +116,6 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		Cert:           strPtr(string(certPEM)),
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
-		Alarm:          &alarm,
 		State:          &state,
 	}
 
@@ -123,4 +123,15 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		return "", err
 	}
 	return certID, nil
+}
+
+func SetCertAlarmSvc(certID string, alarm int8) error {
+	if alarm != 0 && alarm != 1 {
+		return errors.New("alarm must be 0 or 1")
+	}
+	cert, err := models.GetCertificateByCertID(certID)
+	if err != nil || cert == nil {
+		return errors.New("certificate not found")
+	}
+	return models.UpdateCertAlarm(certID, alarm)
 }

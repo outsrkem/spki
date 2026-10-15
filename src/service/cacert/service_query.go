@@ -31,7 +31,6 @@ type VersionItem struct {
 	EffectiveTime  *int64  `json:"effectiveTime"`
 	ExpirationTime *int64  `json:"expirationTime"`
 	RevocationTime *int64  `json:"revocationTime,omitempty"`
-	Alarm          *int8   `json:"alarm"`
 	State          *string `json:"state"`
 }
 
@@ -171,6 +170,7 @@ func ListCertsByGenres(offset, limit int, count *int64, genres []int, userID str
 			ParentID: c.ParentID,
 			Pathlev:  c.Pathlev,
 			Genre:    c.Genre,
+			Alarm:    c.Alarm,
 		}
 		v, err := models.GetLatestVersion(c.CertID)
 		if err == nil && v != nil {
@@ -178,7 +178,6 @@ func ListCertsByGenres(offset, limit int, count *int64, genres []int, userID str
 			item.Serial = v.Serial
 			item.NotBefore = v.EffectiveTime
 			item.NotAfter = v.ExpirationTime
-			item.Alarm = v.Alarm
 			item.State = v.State
 		}
 		items = append(items, item)
@@ -209,7 +208,6 @@ func ListCertVersionsSvc(certID string) ([]VersionItem, error) {
 			EffectiveTime:  v.EffectiveTime,
 			ExpirationTime: v.ExpirationTime,
 			RevocationTime: v.RevocationTime,
-			Alarm:          v.Alarm,
 			State:          v.State,
 		})
 	}

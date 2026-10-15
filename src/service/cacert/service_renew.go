@@ -130,7 +130,6 @@ func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 	eff := newCert.NotBefore.UnixMilli()
 	exp := newCert.NotAfter.UnixMilli()
 	state := StateValid
-	alarm := int8(0)
 
 	newVer := models.Version{
 		Revision:       &rev,
@@ -141,7 +140,6 @@ func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 		Cert:           strPtr(string(certPEM)),
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
-		Alarm:          &alarm,
 		State:          &state,
 	}
 

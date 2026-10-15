@@ -140,6 +140,7 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		ParentID: parentID,
 		Pathlev:  pathlev,
 		Genre:    genre,
+		Alarm:    &alarm,
 	}
 	keyRec := &models.PrivateKey{
 		KeyID:       keyID,
@@ -159,7 +160,6 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		Cert:           strPtr(certPEM),
 		EffectiveTime:  &eff,
 		ExpirationTime: &exp,
-		Alarm:          &alarm,
 		State:          &state,
 	}
 

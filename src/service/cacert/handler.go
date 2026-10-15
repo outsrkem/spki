@@ -360,3 +360,31 @@ func ImportCA() app.HandlerFunc {
 		c.JSON(http.StatusCreated, answer.ResBody("200", "", resp))
 	}
 }
+
+// SetCertAlarm PATCH /spki/cert/:id/alarm
+// body: {"alarm": 1}
+func SetCertAlarm() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		certID := c.Param("id")
+		var req struct {
+			Alarm *int8 `json:"alarm"`
+		}
+		if err := c.BindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "请求体错误: "+err.Error(), ""))
+			return
+		}
+		if req.Alarm == nil || (*req.Alarm != 0 && *req.Alarm != 1) {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "alarm must be 0 or 1", ""))
+			return
+		}
+		if err := SetCertAlarmSvc(certID, *req.Alarm); err != nil {
+			hlog.Error("SetCertAlarm: ", err)
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"certId": certID,
+			"alarm":  *req.Alarm,
+		}))
+	}
+}
