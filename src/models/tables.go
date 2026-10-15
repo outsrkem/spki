@@ -11,7 +11,7 @@ import (
 // ---------- 结构体 ----------
 
 type Certificate struct {
-	ID       int     `gorm:"column:id;primaryKey;autoIncrement"`
+	ID       int     `gorm:"column:kid;primaryKey;autoIncrement"`
 	CertID   string  `gorm:"column:certid"`
 	UserID   string  `gorm:"column:user_id"`
 	Title    *string `gorm:"column:title"`
@@ -25,7 +25,7 @@ type Certificate struct {
 func (Certificate) TableName() string { return "certificate" }
 
 type PrivateKey struct {
-	ID          int     `gorm:"column:id;primaryKey;autoIncrement"`
+	ID          int     `gorm:"column:kid;primaryKey;autoIncrement"`
 	KeyID       string  `gorm:"column:keyid"`
 	PrivateKey  string  `gorm:"column:private_key"`
 	Passphrase  string  `gorm:"column:passphrase"` // 加密后的口令
@@ -36,7 +36,7 @@ type PrivateKey struct {
 func (PrivateKey) TableName() string { return "private_key" }
 
 type Version struct {
-	ID             int     `gorm:"column:id;primaryKey;autoIncrement"`
+	ID             int     `gorm:"column:kid;primaryKey;autoIncrement"`
 	Revision       *int    `gorm:"column:revision"`
 	CertID         *string `gorm:"column:certid"`
 	KeyID          *string `gorm:"column:keyid"`
