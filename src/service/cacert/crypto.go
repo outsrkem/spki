@@ -162,14 +162,31 @@ func parseKeyUsage(list []string, isCA bool) (x509.KeyUsage, error) {
 		switch s {
 		case "digitalSignature":
 			ku |= x509.KeyUsageDigitalSignature
+		case "nonRepudiation", "contentCommitment":
+			ku |= x509.KeyUsageContentCommitment
 		case "keyEncipherment":
 			ku |= x509.KeyUsageKeyEncipherment
-		case "certSign", "keyCertSign":
+		case "dataEncipherment":
+			ku |= x509.KeyUsageDataEncipherment
+		case "keyAgreement":
+			ku |= x509.KeyUsageKeyAgreement
+		case "keyCertSign":
 			ku |= x509.KeyUsageCertSign
 		case "crlSign":
 			ku |= x509.KeyUsageCRLSign
+		case "encipherOnly":
+			ku |= x509.KeyUsageEncipherOnly
+		case "decipherOnly":
+			ku |= x509.KeyUsageDecipherOnly
 		default:
 			return 0, fmt.Errorf("unsupported keyUsage: %s", s)
+		}
+	}
+
+	// CA必须包含keyCertSign
+	if isCA {
+		if (ku & x509.KeyUsageCertSign) == 0 {
+			return 0, fmt.Errorf("CA certificate keyUsage must contain keyCertSign")
 		}
 	}
 	return ku, nil
