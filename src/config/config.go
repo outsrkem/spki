@@ -3,9 +3,11 @@ package config
 import (
 	"flag"
 	"os"
+	"spki/src/cfgtypes"
+	"spki/src/slog"
 	"time"
 
-	"github.com/cloudwego/hertz/pkg/common/hlog"
+	"gopkg.in/yaml.v3"
 )
 
 // FlagArgs represents the command-line arguments for the application.
@@ -26,8 +28,10 @@ func NewFlagArgs() *FlagArgs {
 }
 
 // configPath is a global variable that stores a pointer to the configuration file path.
-var configPath *string
-var AppCfg *Config
+var (
+	configPath *string
+	AppCfg     *cfgtypes.Config
+)
 
 // Initializer function is used to initialize the application's configuration.
 func Initializer() {
@@ -43,18 +47,25 @@ func Initializer() {
 }
 
 // InitConfig 初始化配置
-func InitConfig() *Config {
-	hlog.Info("Read configuration file: ", *configPath)
+func InitConfig() *cfgtypes.Config {
+	klog := slog.FromContext(nil)
+	klog.Info("Read configuration file: ", *configPath)
 
 	configData, err := os.ReadFile(*configPath)
 	if err != nil {
-		hlog.Error("Failed to read the configuration file: ", err)
+		klog.Error("Failed to read the configuration file: ", err)
 		os.Exit(1)
 	}
 
-	var cfg Config
-	cfg.unmarshal(configData)        // 解析配置文件
-	cfg.decryptionDatabaseMysqlPwd() // 解密数据库密码
+	var cfg cfgtypes.Config
+	// 解析配置文件
+	err = yaml.Unmarshal(configData, &cfg)
+	if err != nil {
+		klog.Errorf("Unmarshal configuration file error: %v", err)
+		os.Exit(1)
+	}
+
+	decryCfgCipher(&cfg.Spki.Database.Passwd) // 解密数据库密码
 	AppCfg = &cfg
 	return &cfg
 }

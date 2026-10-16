@@ -1,4 +1,4 @@
-package config
+package cfgtypes
 
 import (
 	"os"
@@ -48,7 +48,21 @@ type Uias struct {
 }
 
 type Log struct {
-	Level string `yaml:"level"`
+	Level  string `yaml:"level"`
+	Output Output `yaml:"output"`
+}
+
+type Output struct {
+	File   File   `yaml:"file"`
+	Stdout string `yaml:"stdout"`
+}
+
+type File struct {
+	Name       string `yaml:"name"`
+	MaxSize    int    `yaml:"maxsize"`
+	MaxBackups int    `yaml:"maxbackups"`
+	MaxAge     int    `yaml:"maxage"`
+	Compress   bool   `yaml:"compress"`
 }
 
 // unmarshal is a method used to parse configuration data in a byte slice and fill it into the Config struct.

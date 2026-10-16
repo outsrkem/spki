@@ -4,8 +4,11 @@ go 1.25
 
 require (
 	github.com/cloudwego/hertz v0.10.4
-	github.com/hertz-contrib/logger/slog v1.0.0
+	github.com/google/uuid v1.6.0
+	github.com/hiuias/uias-sdk-go v0.0.1-rc.4
+	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/satori/go.uuid v1.2.0
+	github.com/sirupsen/logrus v1.10.2
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/mysql v1.6.0
@@ -14,6 +17,7 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
@@ -34,4 +38,6 @@ require (
 	golang.org/x/sys v0.24.0 // indirect
 	golang.org/x/text v0.20.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

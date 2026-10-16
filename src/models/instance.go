@@ -27,6 +27,13 @@ func CreateInstance(data Instance) error {
 	return mysql.OrmDB.Create(&data).Error
 }
 
+// GetInstance queries an instance by DomainId
+func GetInstance(DomainId string) (Instance, error) {
+	var instance Instance
+	r := mysql.OrmDB.Model(&Instance{}).Where("domain_id = ?", DomainId).First(&instance)
+	return instance, r.Error
+}
+
 // GetInstanceByID 按 instanceID 查实例
 func GetInstanceByID(instanceID string) (*Instance, error) {
 	var inst Instance

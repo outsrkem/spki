@@ -3,23 +3,24 @@ package mysql
 import (
 	"database/sql"
 	"fmt"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
-	"gorm.io/gorm/schema"
-	"spki/src/config"
+	"spki/src/cfgtypes"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/common/hlog"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 var OrmDB *gorm.DB
 
 // InitDB initializes the database connection.
-func InitDB(cfg *config.Database) {
+func InitDB(cfg *cfgtypes.Spki) {
 	// Construct the DSN string.
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true", cfg.User, cfg.Passwd, cfg.Host, cfg.Port, cfg.Name)
-	hlog.Debug("database passwd: ", cfg.Passwd)
-	hlog.Info("Connect database: ", cfg.Host+":"+cfg.Port)
+	dbcfg := cfg.Database
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true", dbcfg.User, dbcfg.Passwd, dbcfg.Host, dbcfg.Port, dbcfg.Name)
+	hlog.Debug("database passwd: ", dbcfg.Passwd)
+	hlog.Info("Connect database: ", dbcfg.Host+":"+dbcfg.Port)
 	retries := 0
 	backoff := time.Second
 	var (

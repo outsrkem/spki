@@ -3,6 +3,7 @@ package answer
 const (
 	EcodeOK                        = "SPKI.0000" // 结果正常
 	EcodeError                     = "SPKI.0101" // 结果错误
+	EcodeInstance404               = "SPKI.0401"
 	EcodeInvalidRequestParamsError = "SPKI.0102" // 请求参数校验失败。
 	EcodeInvalidRequestError       = "SPKI.0103" // 请求体错误
 	EcodeInvalidTokenError         = "SPKI.0175" // 无效，错误的 token
