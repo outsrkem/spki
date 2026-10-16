@@ -225,9 +225,10 @@ type Query struct {
 // ListCert GET /spki/cert?genre=1&genre=2
 // 支持多个 genre：
 //
-//	?genre=1&genre=2  → 查根 CA + 中间 CA
-//	?genre=3          → 查末端证书
-//	不传              → 全部
+//		?genre=1&genre=2  → 查根 CA + 中间 CA
+//		?genre=3          → 查末端证书
+//		不传              → 全部
+//	    ?hk=1 → 存在私钥，可签下级证书,不传，查全部
 func ListCert() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		userID := c.GetString("userId")
