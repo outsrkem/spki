@@ -10,7 +10,7 @@ import (
 
 // ---------- 初始化根 CA ----------
 
-func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
+func InitRootCA(dao *models.DB, cfg *CertConfig) (string, error) {
 	if err := validateConfig(cfg); err != nil {
 		return "", err
 	}
@@ -53,7 +53,6 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 
 	certRec := models.Certificate{
 		CertID:   certID,
-		UserID:   userID,
 		Title:    cfg.Title,
 		Subject:  &subject,
 		ParentID: nil,
@@ -80,7 +79,7 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 		State:          &state,
 	}
 
-	if err := models.SaveCertBundle(certRec, keyRec, version, account); err != nil {
+	if err := dao.SaveCertBundle(certRec, keyRec, version); err != nil {
 		return "", err
 	}
 	return certID, nil
@@ -88,26 +87,26 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 
 // ---------- 签发中间 CA ----------
 
-func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (string, error) {
+func IssueIntermediateSvc(dao *models.DB, parentID string, cfg *CertConfig) (string, error) {
 	if err := validateConfig(cfg); err != nil {
 		return "", err
 	}
 
-	parent, err := models.GetCertificateByCertID(parentID)
+	parent, err := dao.GetCertificateByCertID(parentID)
 	if err != nil {
 		return "", fmt.Errorf("get parent: %w", err)
 	}
 	if parent == nil {
 		return "", errors.New("parent CA not found")
 	}
-	parentVer, err := models.GetLatestVersion(parentID)
+	parentVer, err := dao.GetLatestVersion(parentID)
 	if err != nil || parentVer == nil {
 		return "", errors.New("parent version not found")
 	}
 	if parentVer.KeyID == nil {
 		return "", errors.New("parent CA has no private key, cannot sign")
 	}
-	parentKey, err := models.GetPrivateKeyByKeyID(*parentVer.KeyID)
+	parentKey, err := dao.GetPrivateKeyByKeyID(*parentVer.KeyID)
 	if err != nil || parentKey == nil {
 		return "", errors.New("parent key not found")
 	}
@@ -159,7 +158,6 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 
 	certRec := models.Certificate{
 		CertID:   certID,
-		UserID:   userID,
 		Title:    cfg.Title,
 		Subject:  &subject,
 		ParentID: &parentID,
@@ -186,7 +184,7 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 		State:          &state,
 	}
 
-	if err := models.SaveCertBundle(certRec, keyRec, version, account); err != nil {
+	if err := dao.SaveCertBundle(certRec, keyRec, version); err != nil {
 		return "", err
 	}
 	return certID, nil

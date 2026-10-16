@@ -3,7 +3,6 @@ package models
 import (
 	"errors"
 	"gorm.io/gorm"
-	"spki/src/database/mysql"
 )
 
 type PrivateKey struct {
@@ -18,9 +17,9 @@ type PrivateKey struct {
 
 func (PrivateKey) TableName() string { return "pki_private_key" }
 
-func GetPrivateKeyByKeyID(keyID string) (*PrivateKey, error) {
+func (d *DB) GetPrivateKeyByKeyID(keyID string) (*PrivateKey, error) {
 	var k PrivateKey
-	err := mysql.OrmDB.Where("keyid = ?", keyID).First(&k).Error
+	err := d.WithInstance().Where("keyid = ?", keyID).First(&k).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}

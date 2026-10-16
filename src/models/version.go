@@ -2,8 +2,8 @@ package models
 
 import (
 	"errors"
+
 	"gorm.io/gorm"
-	"spki/src/database/mysql"
 )
 
 type Version struct {
@@ -23,17 +23,23 @@ type Version struct {
 
 func (Version) TableName() string { return "pki_version" }
 
-func GetLatestVersion(certID string) (*Version, error) {
+func (d *DB) GetLatestVersion(certID string) (*Version, error) {
 	var v Version
-	err := mysql.OrmDB.Where("certid = ?", certID).Order("revision desc").First(&v).Error
+	err := d.WithInstance().
+		Where("certid = ?", certID).
+		Order("revision desc").
+		First(&v).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	return &v, err
 }
 
-func ListVersionsByCertID(certID string) ([]Version, error) {
+func (d *DB) ListVersionsByCertID(certID string) ([]Version, error) {
 	var list []Version
-	err := mysql.OrmDB.Where("certid = ?", certID).Order("revision asc").Find(&list).Error
+	err := d.WithInstance().
+		Where("certid = ?", certID).
+		Order("revision asc").
+		Find(&list).Error
 	return list, err
 }

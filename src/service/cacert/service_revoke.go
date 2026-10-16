@@ -12,29 +12,29 @@ import (
 
 // ---------- 吊销 ----------
 
-func RevokeCertSvc(certID string) error {
-	cert, err := models.GetCertificateByCertID(certID)
+func RevokeCertSvc(dao *models.DB, certID string) error {
+	cert, err := dao.GetCertificateByCertID(certID)
 	if err != nil || cert == nil {
 		return errors.New("certificate not found")
 	}
 	now := nowMillis()
-	return models.RevokeCertTx(certID, StateRevoked, now)
+	return dao.RevokeCertTx(certID, StateRevoked, now)
 }
 
 // ---------- 删除 ----------
 
-func DeleteCertSvc(certID string) error {
-	return models.DeleteCertTx(certID)
+func DeleteCertSvc(dao *models.DB, certID string) error {
+	return dao.DeleteCertTx(certID)
 }
 
 // ---------- CRL ----------
 
-func BuildCRL(issuerID string) (string, error) {
-	issuer, err := models.GetCertificateByCertID(issuerID)
+func BuildCRL(dao *models.DB, issuerID string) (string, error) {
+	issuer, err := dao.GetCertificateByCertID(issuerID)
 	if err != nil || issuer == nil {
 		return "", errors.New("issuer not found")
 	}
-	issuerVer, err := models.GetLatestVersion(issuerID)
+	issuerVer, err := dao.GetLatestVersion(issuerID)
 	if err != nil || issuerVer == nil {
 		return "", errors.New("issuer version not found")
 	}
@@ -43,7 +43,7 @@ func BuildCRL(issuerID string) (string, error) {
 		return "", errors.New("issuer CA has no private key, cannot sign CRL")
 	}
 
-	issuerKeyRec, err := models.GetPrivateKeyByKeyID(*issuerVer.KeyID)
+	issuerKeyRec, err := dao.GetPrivateKeyByKeyID(*issuerVer.KeyID)
 	if err != nil || issuerKeyRec == nil {
 		return "", errors.New("issuer key not found")
 	}
@@ -56,7 +56,7 @@ func BuildCRL(issuerID string) (string, error) {
 		return "", err
 	}
 
-	revoked, err := models.ListRevokedByIssuer(issuerID)
+	revoked, err := dao.ListRevokedByIssuer(issuerID)
 	if err != nil {
 		return "", err
 	}

@@ -16,12 +16,12 @@ import (
 // RenewCertSvc 续签统一入口
 //   - 根 CA（parent_id == NULL）→ 自签名
 //   - 中间 CA / 末端证书 → 上级 CA 签
-func RenewCertSvc(certID string, expiry Expiry) (int, error) {
+func RenewCertSvc(dao *models.DB, certID string, expiry Expiry) (int, error) {
 	if expiry.Years == 0 && expiry.Months == 0 && expiry.Days == 0 {
 		return 0, errors.New("expiry is required")
 	}
 
-	cert, err := models.GetCertificateByCertID(certID)
+	cert, err := dao.GetCertificateByCertID(certID)
 	if err != nil {
 		return 0, fmt.Errorf("get certificate: %w", err)
 	}
@@ -31,12 +31,12 @@ func RenewCertSvc(certID string, expiry Expiry) (int, error) {
 
 	// 根 CA：自签名
 	if cert.ParentID == nil {
-		return renewCert(certID, expiry, true, true)
+		return renewCert(dao, certID, expiry, true, true)
 	}
 
 	// 中间 CA 或末端证书：上级签
 	isCA := cert.Genre == GenreInter
-	return renewCert(certID, expiry, isCA, false)
+	return renewCert(dao, certID, expiry, isCA, false)
 }
 
 // renewCert 续签核心
@@ -45,15 +45,15 @@ func RenewCertSvc(certID string, expiry Expiry) (int, error) {
 //	selfSign = false → 上级签（中间 CA / 末端证书）
 //	isCA     = true  → CA 证书
 //	isCA     = false → 末端证书
-func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
+func renewCert(dao *models.DB, certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 	// 1. 查原证书
-	cert, err := models.GetCertificateByCertID(certID)
+	cert, err := dao.GetCertificateByCertID(certID)
 	if err != nil || cert == nil {
 		return 0, errors.New("certificate not found")
 	}
 
 	// 2. 查原证书最新版本
-	oldVer, err := models.GetLatestVersion(certID)
+	oldVer, err := dao.GetLatestVersion(certID)
 	if err != nil || oldVer == nil {
 		return 0, errors.New("version not found")
 	}
@@ -62,7 +62,7 @@ func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 	}
 
 	// 3. 复用旧私钥
-	oldKey, err := models.GetPrivateKeyByKeyID(*oldVer.KeyID)
+	oldKey, err := dao.GetPrivateKeyByKeyID(*oldVer.KeyID)
 	if err != nil || oldKey == nil {
 		return 0, errors.New("old private key not found")
 	}
@@ -83,11 +83,11 @@ func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 	var parentSigner crypto.Signer
 
 	if !selfSign {
-		issuer, err := models.GetCertificateByCertID(*cert.ParentID)
+		issuer, err := dao.GetCertificateByCertID(*cert.ParentID)
 		if err != nil || issuer == nil {
 			return 0, errors.New("issuer not found")
 		}
-		issuerVer, err := models.GetLatestVersion(*cert.ParentID)
+		issuerVer, err := dao.GetLatestVersion(*cert.ParentID)
 		if err != nil || issuerVer == nil {
 			return 0, errors.New("issuer version not found")
 		}
@@ -96,7 +96,7 @@ func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 			return 0, errors.New("issuer CA has no private key, cannot sign")
 		}
 
-		issuerKey, err := models.GetPrivateKeyByKeyID(*issuerVer.KeyID)
+		issuerKey, err := dao.GetPrivateKeyByKeyID(*issuerVer.KeyID)
 		if err != nil || issuerKey == nil {
 			return 0, errors.New("issuer key not found")
 		}
@@ -124,7 +124,7 @@ func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 	certFP := calcCertFingerprint(newCert)
 
 	// 7. 取下一个 revision
-	maxRev, err := models.GetMaxRevision(certID)
+	maxRev, err := dao.GetMaxRevision(certID)
 	if err != nil {
 		return 0, err
 	}
@@ -149,7 +149,7 @@ func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 	}
 
 	// 9. 事务写入
-	if err := models.SaveVersionWithKey(nil, newVer); err != nil {
+	if err := dao.SaveVersionWithKey(nil, newVer); err != nil {
 		return 0, err
 	}
 	return rev, nil
@@ -226,14 +226,29 @@ func keyUsageToStrings(ku x509.KeyUsage) []string {
 	if ku&x509.KeyUsageDigitalSignature != 0 {
 		out = append(out, "digitalSignature")
 	}
+	if ku&x509.KeyUsageContentCommitment != 0 {
+		out = append(out, "contentCommitment") // parseKeyUsage 接受 contentCommitment/nonRepudiation
+	}
 	if ku&x509.KeyUsageKeyEncipherment != 0 {
 		out = append(out, "keyEncipherment")
 	}
+	if ku&x509.KeyUsageDataEncipherment != 0 {
+		out = append(out, "dataEncipherment")
+	}
+	if ku&x509.KeyUsageKeyAgreement != 0 {
+		out = append(out, "keyAgreement")
+	}
 	if ku&x509.KeyUsageCertSign != 0 {
-		out = append(out, "certSign")
+		out = append(out, "keyCertSign") // ← 修复：之前误写成 certSign
 	}
 	if ku&x509.KeyUsageCRLSign != 0 {
 		out = append(out, "crlSign")
+	}
+	if ku&x509.KeyUsageEncipherOnly != 0 {
+		out = append(out, "encipherOnly")
+	}
+	if ku&x509.KeyUsageDecipherOnly != 0 {
+		out = append(out, "decipherOnly")
 	}
 	return out
 }

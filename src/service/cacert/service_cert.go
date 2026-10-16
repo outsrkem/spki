@@ -11,16 +11,16 @@ import (
 
 // ---------- 签发末端证书 ----------
 
-func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (string, error) {
+func IssueEndEntitySvc(dao *models.DB, issuerID string, cfg *CertConfig) (string, error) {
 	if err := validateConfig(cfg); err != nil {
 		return "", err
 	}
 
-	issuer, err := models.GetCertificateByCertID(issuerID)
+	issuer, err := dao.GetCertificateByCertID(issuerID)
 	if err != nil || issuer == nil {
 		return "", errors.New("issuer not found")
 	}
-	issuerVer, err := models.GetLatestVersion(issuerID)
+	issuerVer, err := dao.GetLatestVersion(issuerID)
 	if err != nil || issuerVer == nil {
 		return "", errors.New("issuer version not found")
 	}
@@ -29,7 +29,7 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		return "", errors.New("issuer CA has no private key, cannot sign")
 	}
 
-	issuerKey, err := models.GetPrivateKeyByKeyID(*issuerVer.KeyID)
+	issuerKey, err := dao.GetPrivateKeyByKeyID(*issuerVer.KeyID)
 	if err != nil || issuerKey == nil {
 		return "", errors.New("issuer key not found")
 	}
@@ -93,7 +93,6 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 
 	certRec := models.Certificate{
 		CertID:   certID,
-		UserID:   userID,
 		Title:    cfg.Title,
 		Subject:  &subject,
 		ParentID: &issuerID,
@@ -126,7 +125,7 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		State:          &state,
 	}
 
-	if err := models.SaveCertBundle(certRec, keyRec, version, account); err != nil {
+	if err := dao.SaveCertBundle(certRec, keyRec, version); err != nil {
 		return "", err
 	}
 	return certID, nil

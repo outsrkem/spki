@@ -7,10 +7,21 @@ import (
 	"spki/src/models"
 	"spki/src/pkg/answer"
 	"spki/src/pkg/common"
+	"spki/src/pkg/constants"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 )
+
+func mustDao(c *app.RequestContext) (*models.DB, bool) {
+	dao, err := models.NewDBModel(c.GetString(constants.InstanceIdKey))
+	if err != nil {
+		hlog.Error("NewDBModel: ", err)
+		c.JSON(http.StatusUnauthorized, answer.ResBody("401", "instance not found", ""))
+		return nil, false
+	}
+	return dao, true
+}
 
 // ---------- 初始化根 CA ----------
 
@@ -23,10 +34,13 @@ func InitCa() app.HandlerFunc {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", "请求体错误: "+err.Error(), ""))
 			return
 		}
-		userID := c.GetString("userId")
-		account := c.GetString("account")
 
-		certID, err := InitRootCA(userID, account, &cfg)
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+
+		certID, err := InitRootCA(dao, &cfg)
 		if err != nil {
 			hlog.Error("InitCa: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -55,10 +69,13 @@ func IssueIntermediate() app.HandlerFunc {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuer.id is required", ""))
 			return
 		}
-		userID := c.GetString("userId")
-		account := c.GetString("account")
 
-		certID, err := IssueIntermediateSvc(userID, account, req.Issuer.ID, &req.CertConfig)
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+
+		certID, err := IssueIntermediateSvc(dao, req.Issuer.ID, &req.CertConfig)
 		if err != nil {
 			hlog.Error("IssueIntermediate: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -87,10 +104,13 @@ func IssueEndEntity() app.HandlerFunc {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuer.id is required", ""))
 			return
 		}
-		userID := c.GetString("userId")
-		account := c.GetString("account")
 
-		certID, err := IssueEndEntitySvc(userID, account, req.Issuer.ID, &req.CertConfig)
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+
+		certID, err := IssueEndEntitySvc(dao, req.Issuer.ID, &req.CertConfig)
 		if err != nil {
 			hlog.Error("IssueEndEntity: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -106,7 +126,11 @@ func IssueEndEntity() app.HandlerFunc {
 func RevokeCert() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		certID := c.Param("id")
-		if err := RevokeCertSvc(certID); err != nil {
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+		if err := RevokeCertSvc(dao, certID); err != nil {
 			hlog.Error("RevokeCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
@@ -121,7 +145,11 @@ func RevokeCert() app.HandlerFunc {
 func DeleteCert() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		certID := c.Param("id")
-		if err := DeleteCertSvc(certID); err != nil {
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+		if err := DeleteCertSvc(dao, certID); err != nil {
 			hlog.Error("DeleteCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
@@ -151,11 +179,14 @@ func ExportCertChain() app.HandlerFunc {
 
 		var chain string
 		var err error
-
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
 		if onlyRoot {
-			chain, err = BuildRootPEM(certID)
+			chain, err = BuildRootPEM(dao, certID)
 		} else {
-			chain, err = BuildCertChain(certID, includeRoot)
+			chain, err = BuildCertChain(dao, certID, includeRoot)
 		}
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -175,7 +206,11 @@ func DownloadCRL() app.HandlerFunc {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuerId is required", ""))
 			return
 		}
-		crl, err := BuildCRL(issuerID)
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+		crl, err := BuildCRL(dao, issuerID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
@@ -201,7 +236,12 @@ func RenewCert() app.HandlerFunc {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", "expiry is required", ""))
 			return
 		}
-		rev, err := RenewCertSvc(certID, req.Expiry)
+
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+		rev, err := RenewCertSvc(dao, certID, req.Expiry)
 		if err != nil {
 			hlog.Error("RenewCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -231,7 +271,6 @@ type Query struct {
 //	    ?hk=1 → 存在私钥，可签下级证书,不传，查全部
 func ListCert() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
-		userID := c.GetString("userId")
 
 		var query Query
 		if err := c.BindQuery(&query); err != nil {
@@ -261,8 +300,12 @@ func ListCert() app.HandlerFunc {
 			}
 			hasKey = *query.HasKey
 		}
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
 		count := int64(0)
-		items, err := ListCertsByGenres(offset, limit, &count, query.Genre, hasKey, userID)
+		items, err := ListCertsByGenres(dao, offset, limit, &count, query.Genre, hasKey)
 		if err != nil {
 			hlog.Error("ListCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -282,7 +325,11 @@ func ListCert() app.HandlerFunc {
 func ListCertVersions() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		certID := c.Param("id")
-		items, err := ListCertVersionsSvc(certID)
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+		items, err := ListCertVersionsSvc(dao, certID)
 		if err != nil {
 			hlog.Error("ListCertVersions: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -300,7 +347,11 @@ func ListCertVersions() app.HandlerFunc {
 func FindRootCA() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		certID := c.Param("id")
-		info, err := FindRootCASvc(certID)
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+		info, err := FindRootCASvc(dao, certID)
 		if err != nil {
 			hlog.Error("FindRootCA: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -313,8 +364,11 @@ func FindRootCA() app.HandlerFunc {
 func ExportCertBundle() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		certID := c.Param("id")
-
-		cert, err := models.GetCertificateByCertID(certID)
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+		cert, err := dao.GetCertificateByCertID(certID)
 		if err != nil || cert == nil {
 			c.JSON(http.StatusNotFound, answer.ResBody("404", "certificate not found", ""))
 			return
@@ -324,7 +378,7 @@ func ExportCertBundle() app.HandlerFunc {
 			return
 		}
 
-		zipData, zipName, err := GetCertZip(certID)
+		zipData, zipName, err := GetCertZip(dao, certID)
 		if err != nil {
 			hlog.Error("ExportCertBundle: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -352,10 +406,11 @@ func ImportCA() app.HandlerFunc {
 			return
 		}
 
-		userID := c.GetString("userId")
-		account := c.GetString("account")
-
-		resp, err := ImportCASvc(userID, account, &req)
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+		resp, err := ImportCASvc(dao, &req)
 		if err != nil {
 			hlog.Error("ImportCA: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
