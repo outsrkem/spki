@@ -216,6 +216,12 @@ func RenewCert() app.HandlerFunc {
 
 // ---------- 查询 ----------
 
+// Query 查询参数
+type Query struct {
+	Genre  []int `query:"genre"`
+	HasKey *int  `query:"hk"`
+}
+
 // ListCert GET /spki/cert?genre=1&genre=2
 // 支持多个 genre：
 //
@@ -301,14 +307,6 @@ func FindRootCA() app.HandlerFunc {
 		}
 		c.JSON(http.StatusOK, answer.ResBody("200", "", info))
 	}
-}
-
-// ---------- Query 结构体 ----------
-
-// Query 查询参数
-type Query struct {
-	Genre  []int `query:"genre"`
-	HasKey *int  `query:"hasKey"`
 }
 
 func ExportCertBundle() app.HandlerFunc {
