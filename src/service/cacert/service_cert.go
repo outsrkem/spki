@@ -24,6 +24,11 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	if err != nil || issuerVer == nil {
 		return "", errors.New("issuer version not found")
 	}
+
+	if issuerVer.KeyID == nil {
+		return "", errors.New("issuer CA has no private key, cannot sign")
+	}
+
 	issuerKey, err := models.GetPrivateKeyByKeyID(*issuerVer.KeyID)
 	if err != nil || issuerKey == nil {
 		return "", errors.New("issuer key not found")
@@ -41,7 +46,7 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	var encKey string
 	var encPassphrase string
 	var keyFP string
-	var keyIDPtr *string // 新增
+	var keyIDPtr *string
 
 	if cfg.CSRPem == "" {
 		key, err = createKey(cfg.Key.Algo, cfg.Key.Size)
@@ -56,7 +61,6 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		if err != nil {
 			return "", fmt.Errorf("calc key fingerprint: %w", err)
 		}
-		// 只有非 CSR 模式才有 keyID
 		keyID := uuid4.Uuid4Str()
 		keyIDPtr = &keyID
 	}
@@ -82,6 +86,10 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 	exp := cert.NotAfter.UnixMilli()
 	subject := formatSubject(cert.Subject)
 	state := StateValid
+	hasKey := int8(0)
+	if cfg.CSRPem == "" {
+		hasKey = 1
+	}
 
 	certRec := models.Certificate{
 		CertID:   certID,
@@ -91,6 +99,7 @@ func IssueEndEntitySvc(userID, account, issuerID string, cfg *CertConfig) (strin
 		ParentID: &issuerID,
 		Pathlev:  PathLevLeaf,
 		Genre:    GenreLeaf,
+		HasKey:   hasKey,
 		CertReq:  strPtrIf(cfg.CSRPem),
 	}
 

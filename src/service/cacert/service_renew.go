@@ -91,6 +91,11 @@ func renewCert(certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 		if err != nil || issuerVer == nil {
 			return 0, errors.New("issuer version not found")
 		}
+
+		if issuerVer.KeyID == nil {
+			return 0, errors.New("issuer CA has no private key, cannot sign")
+		}
+
 		issuerKey, err := models.GetPrivateKeyByKeyID(*issuerVer.KeyID)
 		if err != nil || issuerKey == nil {
 			return 0, errors.New("issuer key not found")
@@ -161,7 +166,6 @@ func buildRenewConfig(cert *models.Certificate, oldCert *x509.Certificate, expir
 		},
 	}
 
-	// 关键：从旧证书推断算法和长度
 	cfg.Key = inferKeySpec(oldCert)
 
 	if len(oldCert.Subject.Organization) > 0 {

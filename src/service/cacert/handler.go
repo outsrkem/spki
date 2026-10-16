@@ -246,8 +246,16 @@ func ListCert() app.HandlerFunc {
 			return
 		}
 
+		hasKey := -1
+		if query.HasKey != nil {
+			if *query.HasKey != 0 && *query.HasKey != 1 {
+				c.JSON(http.StatusBadRequest, answer.ResBody("444", "hasKey must be 0 or 1", ""))
+				return
+			}
+			hasKey = *query.HasKey
+		}
 		count := int64(0)
-		items, err := ListCertsByGenres(offset, limit, &count, query.Genre, userID)
+		items, err := ListCertsByGenres(offset, limit, &count, query.Genre, hasKey, userID)
 		if err != nil {
 			hlog.Error("ListCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
@@ -299,7 +307,8 @@ func FindRootCA() app.HandlerFunc {
 
 // Query 查询参数
 type Query struct {
-	Genre []int `query:"genre"`
+	Genre  []int `query:"genre"`
+	HasKey *int  `query:"hasKey"`
 }
 
 func ExportCertBundle() app.HandlerFunc {
@@ -341,10 +350,6 @@ func ImportCA() app.HandlerFunc {
 		}
 		if req.CertPem == "" {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", "certPem is required", ""))
-			return
-		}
-		if req.KeyPem == "" {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "keyPem is required", ""))
 			return
 		}
 

@@ -1,6 +1,7 @@
 package cacert
 
 import (
+	"crypto"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -60,37 +61,38 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		pathlev = PathLevInter
 	}
 
-	// 4. 私钥必填
-	if req.KeyPem == "" {
-		return nil, errors.New("CA private key is required")
-	}
-	signer, err := parsePKCS8Key(req.KeyPem)
-	if err != nil {
-		return nil, fmt.Errorf("parse key: %w", err)
+	// 4. 私钥处理（可选）
+	var signer crypto.Signer
+	var keyFP string
+	hasKey := req.KeyPem != ""
+
+	if hasKey {
+		signer, err = parsePKCS8Key(req.KeyPem)
+		if err != nil {
+			return nil, fmt.Errorf("parse key: %w", err)
+		}
+
+		keyFP, err = calcPubKeyFingerprint(signer)
+		if err != nil {
+			return nil, fmt.Errorf("calc key fingerprint: %w", err)
+		}
+		if existing, err := models.GetPrivateKeyByFingerprint(keyFP); err != nil {
+			return nil, fmt.Errorf("check key fingerprint: %w", err)
+		} else if existing != nil {
+			return nil, fmt.Errorf("private key already imported: keyId=%s", existing.KeyID)
+		}
+
+		if err := matchCertAndKey(cert, signer); err != nil {
+			return nil, err
+		}
 	}
 
-	// 4.5 私钥指纹判重（用公钥指纹代表私钥）
-	keyFP, err := calcPubKeyFingerprint(signer)
-	if err != nil {
-		return nil, fmt.Errorf("calc key fingerprint: %w", err)
-	}
-	if existing, err := models.GetPrivateKeyByFingerprint(keyFP); err != nil {
-		return nil, fmt.Errorf("check key fingerprint: %w", err)
-	} else if existing != nil {
-		return nil, fmt.Errorf("private key already imported: keyId=%s", existing.KeyID)
-	}
-
-	// 5. 校验私钥和证书匹配
-	if err := matchCertAndKey(cert, signer); err != nil {
-		return nil, err
-	}
-
-	// 6. 校验 KeyUsage 有 certSign
+	// 5. 校验 KeyUsage 有 certSign
 	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return nil, errors.New("CA certificate must have certSign key usage")
 	}
 
-	// 7. 处理 parentId
+	// 6. 处理 parentId
 	var parentID *string
 	if !isRoot {
 		if req.IssuerID != "" {
@@ -114,15 +116,8 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		}
 	}
 
-	// 8. 加密私钥
-	encKey, encPassphrase, err := encryptPrivateKey(signer)
-	if err != nil {
-		return nil, fmt.Errorf("encrypt key: %w", err)
-	}
-
-	// 9. 组装记录
+	// 7. 组装记录
 	certID := uuid4.Uuid4Str()
-	keyID := uuid4.Uuid4Str()
 	now := nowMillis()
 	subject := formatSubject(cert.Subject)
 	serial := cert.SerialNumber.Text(16)
@@ -130,6 +125,11 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 	exp := cert.NotAfter.UnixMilli()
 	state := StateValid
 	rev := 1
+
+	hasKeyInt8 := int8(0)
+	if hasKey {
+		hasKeyInt8 = 1
+	}
 
 	certRec := models.Certificate{
 		CertID:   certID,
@@ -139,20 +139,35 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		ParentID: parentID,
 		Pathlev:  pathlev,
 		Genre:    genre,
+		HasKey:   hasKeyInt8,
 	}
-	keyRec := &models.PrivateKey{
-		KeyID:       keyID,
-		PrivateKey:  encKey,
-		Passphrase:  encPassphrase,
-		Fingerprint: &keyFP,
-		CreateTime:  now,
+
+	var keyRec *models.PrivateKey
+	var keyIDPtr *string
+
+	if hasKey {
+		keyID := uuid4.Uuid4Str()
+		keyIDPtr = &keyID
+
+		encKey, encPassphrase, err := encryptPrivateKey(signer)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt key: %w", err)
+		}
+
+		keyRec = &models.PrivateKey{
+			KeyID:       keyID,
+			PrivateKey:  encKey,
+			Passphrase:  encPassphrase,
+			Fingerprint: &keyFP,
+			CreateTime:  now,
+		}
 	}
 
 	certPEM := string(pemEncode("CERTIFICATE", cert.Raw))
 	version := models.Version{
 		Revision:       &rev,
 		CertID:         &certID,
-		KeyID:          &keyID,
+		KeyID:          keyIDPtr,
 		Serial:         &serial,
 		Fingerprint:    &certFP,
 		Cert:           strPtr(certPEM),

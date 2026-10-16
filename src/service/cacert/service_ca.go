@@ -59,6 +59,7 @@ func InitRootCA(userID, account string, cfg *CertConfig) (string, error) {
 		ParentID: nil,
 		Pathlev:  PathLevCA,
 		Genre:    GenreRoot,
+		HasKey:   1,
 	}
 	keyRec := &models.PrivateKey{
 		KeyID:       keyID,
@@ -102,6 +103,9 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 	parentVer, err := models.GetLatestVersion(parentID)
 	if err != nil || parentVer == nil {
 		return "", errors.New("parent version not found")
+	}
+	if parentVer.KeyID == nil {
+		return "", errors.New("parent CA has no private key, cannot sign")
 	}
 	parentKey, err := models.GetPrivateKeyByKeyID(*parentVer.KeyID)
 	if err != nil || parentKey == nil {
@@ -161,6 +165,7 @@ func IssueIntermediateSvc(userID, account, parentID string, cfg *CertConfig) (st
 		ParentID: &parentID,
 		Pathlev:  PathLevInter,
 		Genre:    GenreInter,
+		HasKey:   1,
 	}
 	keyRec := &models.PrivateKey{
 		KeyID:       keyID,

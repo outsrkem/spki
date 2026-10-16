@@ -8,6 +8,12 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	GenreRoot  = 1
+	GenreInter = 2
+	GenreLeaf  = 3
+)
+
 // ---------- 结构体 ----------
 
 type Certificate struct {
@@ -19,6 +25,7 @@ type Certificate struct {
 	ParentID *string `gorm:"column:parent_id"`
 	Pathlev  int     `gorm:"column:pathlev"`
 	Genre    int     `gorm:"column:genre"`
+	HasKey   int8    `gorm:"column:has_key"`
 	CertReq  *string `gorm:"column:cert_req"`
 }
 
@@ -84,6 +91,18 @@ func UpdateVersionState(certID, state string) error {
 
 func DeleteCertificate(certID string) error {
 	return mysql.OrmDB.Where("certid = ?", certID).Delete(&Certificate{}).Error
+}
+
+// ListSignableCAs 查出可以签发下级证书的 CA（有私钥）
+func ListSignableCAs(userID string) ([]Certificate, error) {
+	var list []Certificate
+	q := mysql.OrmDB.
+		Where("genre IN (?, ?) AND has_key = 1", GenreRoot, GenreInter)
+	if userID != "" {
+		q = q.Where("user_id = ?", userID)
+	}
+	err := q.Order("kid desc").Find(&list).Error
+	return list, err
 }
 
 // ---------- PrivateKey ----------
@@ -288,18 +307,21 @@ func ListCertificatesByGenre(genre int, userID string) ([]Certificate, error) {
 	if userID != "" {
 		q = q.Where("user_id = ?", userID)
 	}
-	err := q.Order("id desc").Find(&list).Error
+	err := q.Order("kid desc").Find(&list).Error
 	return list, err
 }
 
 // ListCertificatesByGenres 按多个类型列出证书
-// genres 为空 → 全部
-func ListCertificatesByGenres(offset, limit int, count *int64, genres []int, userID string) ([]Certificate, error) {
+// hasKey: -1 不过滤；0 只查无私钥；1 只查有私钥
+func ListCertificatesByGenres(offset, limit int, count *int64, genres []int, hasKey int, userID string) ([]Certificate, error) {
 	var list []Certificate
 	q := mysql.OrmDB.Model(&Certificate{})
 
 	if len(genres) > 0 {
 		q = q.Where("genre IN ?", genres)
+	}
+	if hasKey >= 0 {
+		q = q.Where("has_key = ?", hasKey)
 	}
 	if userID != "" {
 		q = q.Where("user_id = ?", userID)

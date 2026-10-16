@@ -38,6 +38,11 @@ func BuildCRL(issuerID string) (string, error) {
 	if err != nil || issuerVer == nil {
 		return "", errors.New("issuer version not found")
 	}
+
+	if issuerVer.KeyID == nil {
+		return "", errors.New("issuer CA has no private key, cannot sign CRL")
+	}
+
 	issuerKeyRec, err := models.GetPrivateKeyByKeyID(*issuerVer.KeyID)
 	if err != nil || issuerKeyRec == nil {
 		return "", errors.New("issuer key not found")

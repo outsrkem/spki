@@ -3,6 +3,7 @@ package cacert
 import (
 	"encoding/json"
 	"fmt"
+	"spki/src/models"
 	"strconv"
 	"strings"
 	"time"
@@ -65,9 +66,9 @@ const (
 
 // 类型常量
 const (
-	GenreRoot  = 1
-	GenreInter = 2
-	GenreLeaf  = 3
+	GenreRoot  = models.GenreRoot
+	GenreInter = models.GenreInter
+	GenreLeaf  = models.GenreLeaf
 )
 
 // Expiry 有效期，支持：

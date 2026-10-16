@@ -14,11 +14,11 @@ type CertListItem struct {
 	ParentID  *string `json:"parentId,omitempty"`
 	Pathlev   int     `json:"pathlev"`
 	Genre     int     `json:"genre"`
+	HasKey    int8    `json:"hasKey"`
 	Revision  *int    `json:"revision,omitempty"`
 	Serial    *string `json:"serial,omitempty"`
 	NotBefore *int64  `json:"notBefore,omitempty"`
 	NotAfter  *int64  `json:"notAfter,omitempty"`
-	Alarm     *int8   `json:"alarm,omitempty"`
 }
 
 // VersionItem 版本列表项 DTO
@@ -155,8 +155,8 @@ func BuildRootPEM(certID string) (string, error) {
 
 // ListCertsByGenres 按多个类型列出证书
 // genres 为空 → 全部
-func ListCertsByGenres(offset, limit int, count *int64, genres []int, userID string) ([]CertListItem, error) {
-	certs, err := models.ListCertificatesByGenres(offset, limit, count, genres, userID)
+func ListCertsByGenres(offset, limit int, count *int64, genres []int, hasKey int, userID string) ([]CertListItem, error) {
+	certs, err := models.ListCertificatesByGenres(offset, limit, count, genres, hasKey, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +170,7 @@ func ListCertsByGenres(offset, limit int, count *int64, genres []int, userID str
 			ParentID: c.ParentID,
 			Pathlev:  c.Pathlev,
 			Genre:    c.Genre,
+			HasKey:   c.HasKey,
 		}
 		v, err := models.GetLatestVersion(c.CertID)
 		if err == nil && v != nil {
