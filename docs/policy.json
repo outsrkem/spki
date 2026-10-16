@@ -1,0 +1,13 @@
+{
+  "name": "SPKI FullAccess",
+  "description": "证书管理系统所有权限",
+  "permit": {
+    "Version": "1.0",
+    "Statement": [
+      {
+        "Action": ["spki:*:*"],
+        "Effect": "Allow"
+      }
+    ]
+  }
+}

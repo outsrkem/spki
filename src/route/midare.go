@@ -1,130 +1,122 @@
 package route
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
-	"net/http"
 	"spki/src/config"
 	"spki/src/pkg/answer"
+	"spki/src/pkg/common"
+	"spki/src/pkg/core"
+	"spki/src/slog"
+	"strings"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/common/hlog"
+	"github.com/google/uuid"
+	"github.com/hiuias/uias-sdk-go"
 )
 
+const xRequestIdKey = "X-Request-id"
+const xAuthTokenKey = "X-Auth-Token"
+
+func RequestId() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		klog := slog.FromContext(c)
+		xRequestId := string(c.GetHeader("X-Request-Id"))
+		if xRequestId == "" {
+			xRequestId = strings.ReplaceAll(uuid.New().String(), "-", "")
+			c.Request.Header.Set("X-Request-Id", xRequestId)
+			klog.Warnf("request id is empty, Set a new request id: %s", xRequestId)
+		}
+		c.Set("xRequestId", xRequestId)
+		c.Next(ctx)
+		if c.Response.Header.Get("X-Request-Id") == "" {
+			c.Response.Header.Set("X-Request-Id", xRequestId)
+			klog.Debugf("Set X-Request-Id in response: %s", xRequestId)
+		}
+	}
+}
+
+func RequestRecorder() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		klog := slog.FromContext(c)
+		start := time.Now()
+		c.Next(ctx)
+		stop := time.Now()
+		latency := stop.Sub(start)
+		klog.Infof("|%14s | %d |%7s %s",
+			latency, c.Response.StatusCode(), string(c.Request.Method()), c.Request.URI().String())
+	}
+}
+
+// 验证Action权限
 func apc(action string) app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
-		//fmt.Println(action)
-		hlog.Debug("start check action")
-		token := c.Request.Header.Get("X-Auth-Token")
-		if token == "" {
-			hlog.Error("X-Auth-Token is empty.")
-			c.JSON(http.StatusForbidden, answer.ResBody(answer.EcodeInvalidTokenError, "X-Auth-Token is empty.", ""))
-			c.Abort()
-			return
-		}
-		//hlog.Debug("token: ", token)
+		klog := slog.FromContext(c)
+		client := uias.NewClientBuilder().
+			WithEndpoint(config.AppCfg.Spki.Uias.Endpoint).
+			WithTimeout(10 * time.Second).
+			WithSkipTlsVerify(false).
+			Build()
+
 		type actionRaw struct {
 			Uias struct {
 				Action string `json:"action"`
 			} `json:"uias"`
 		}
+
 		var raw actionRaw
 		raw.Uias.Action = action
-		rawJson, err := json.Marshal(raw)
+		rawBody, err := json.Marshal(raw)
 		if err != nil {
-			hlog.Errorf("Error marshaling audit log: %v", err)
+			klog.Errorf("Error marshaling audit log: %v", err)
 			c.Abort()
 			return
 		}
 
-		//url := "https://uias-devops.endpoint.outsrkem.top:30078/v1/uias/action/check"
-		url := config.AppCfg.Spki.Uias.Endpoint + "/v1/uias/action/check"
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(rawJson))
+		resp, err := client.VerifyAction(ctx, c.Request.Header.Get(xRequestIdKey), c.Request.Header.Get(xAuthTokenKey), rawBody)
 		if err != nil {
-			hlog.Errorf("Error creating request: %v", err)
-			c.JSON(http.StatusForbidden, answer.ResBody(answer.EcodeInvalidTokenError, "Internal service error.", ""))
+			klog.Warnf("Permission verification error, upstream exception: %v", err)
+			c.JSON(500, resp)
 			c.Abort()
 			return
 		}
 
-		req.Header.Set("X-Auth-Token", token)
-		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+		// 先验证权限
+		if resp.Data.Payload.Authentication != 1 {
+			// 没有权限，返回403和上游返回体
+			klog.Warnf("Permission denial. result: %+v", resp)
+			c.JSON(403, resp.Data)
+			c.Abort()
+			return
+		}
 
-		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Do(req)
+		// 在查询实例
+		klog.Infof("Domain.Id: [%s]", resp.Data.Payload.User.Domain.Id)
+		instanceId, err := core.GetInstanceId(klog, resp.Data.Payload.User.Domain.Id)
 		if err != nil {
-			hlog.Errorf("Error sending req log: %v", err)
-			c.JSON(http.StatusForbidden, answer.ResBody(answer.EcodeInvalidTokenError, "Internal service error.", ""))
-			c.Abort()
-			return
-		}
-		defer func() {
-			if resp != nil {
-				if err := resp.Body.Close(); err != nil {
-					hlog.Error("Close request failed: %v", err)
-				}
-			}
-		}()
-
-		type resultData struct {
-			Metadata struct {
-				Message string `json:"message"`
-				Time    string `json:"time"`
-				Ecode   string `json:"ecode"`
-			} `json:"metadata"`
-			Payload struct {
-				Authentication int         `json:"authentication"`
-				Msg            interface{} `json:"msg"`
-				User           struct {
-					ID   string `json:"id"`
-					Name struct {
-						Account string `json:"account"`
-					} `json:"name"`
-				} `json:"user"`
-			} `json:"payload"`
-		}
-
-		var result resultData
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			hlog.Error("io.ReadAll", err)
-			c.JSON(http.StatusForbidden, answer.ResBody(answer.EcodeInvalidTokenError, "Internal service error.", ""))
+			klog.Errorf("Error getting instance id: %v", err)
+			c.JSON(404, answer.ResBody(answer.EcodeInstance404, "No instance found.", nil))
 			c.Abort()
 			return
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			hlog.Errorf("Request failed with status code %d: %v", resp.StatusCode, result)
-			c.JSON(resp.StatusCode, result)
-			c.Abort()
-			return
+		klog.Info("Permission is granted, and the operation is authorized.")
+		klog.Infof("instance id [%s]", instanceId)
+		c.Set("instanceId", instanceId)
+		c.Set("domainId", resp.Data.Payload.User.Domain.Id)
+		c.Set("domainName", resp.Data.Payload.User.Domain.Name)
+		c.Set("userId", resp.Data.Payload.User.Id)
+		c.Set("account", resp.Data.Payload.User.Name.Account)
+		info := &common.UserInfo{
+			InstanceID: instanceId,
+			DomainID:   resp.Data.Payload.User.Domain.Id,
+			DomainName: resp.Data.Payload.User.Domain.Name,
+			UserID:     resp.Data.Payload.User.Id,
+			Account:    resp.Data.Payload.User.Name.Account,
 		}
-
-		if err := json.Unmarshal(body, &result); err != nil {
-			hlog.Warn("json Unmarshal err: ", err)
-			hlog.Error(result)
-			c.JSON(http.StatusForbidden, answer.ResBody(answer.EcodeInvalidTokenError, "Internal service error.", ""))
-			c.Abort()
-			return
-		}
-
-		hlog.Debugf("result: %+v", result)
-		authentication := result.Payload.Authentication
-		if authentication != 1 {
-			// 没有权限，返回403和上游返回体，便于查看问题
-			hlog.Warnf("Permission denial. result: %+v", result)
-			c.JSON(403, result)
-			c.Abort()
-			return
-		}
-
-		hlog.Info("Permission is granted, and the operation is authorized.")
-		c.Set("userId", result.Payload.User.ID)
-		c.Set("account", result.Payload.User.Name.Account)
-		hlog.Debug("end check action")
+		ctx = common.WithContext(ctx, info)
+		klog.Debug("end check action")
 		c.Next(ctx)
 	}
 }

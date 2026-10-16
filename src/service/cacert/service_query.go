@@ -7,18 +7,19 @@ import (
 
 // CertListItem 列表项 DTO
 type CertListItem struct {
-	CertID    string  `json:"certId"`
-	Title     *string `json:"title,omitempty"`
-	Subject   *string `json:"subject,omitempty"`
-	State     *string `json:"state,omitempty"`
-	ParentID  *string `json:"parentId,omitempty"`
-	Pathlev   int     `json:"pathlev"`
-	Genre     int     `json:"genre"`
-	HasKey    int8    `json:"hasKey"`
-	Revision  *int    `json:"revision,omitempty"`
-	Serial    *string `json:"serial,omitempty"`
-	NotBefore *int64  `json:"notBefore,omitempty"`
-	NotAfter  *int64  `json:"notAfter,omitempty"`
+	CertID    string   `json:"certId"`
+	Title     *string  `json:"title,omitempty"`
+	Subject   *string  `json:"subject,omitempty"`
+	State     *string  `json:"state,omitempty"`
+	ParentID  *string  `json:"parentId,omitempty"`
+	Pathlev   int      `json:"pathlev"`
+	Genre     int      `json:"genre"`
+	HasKey    int8     `json:"hasKey"`
+	Revision  *int     `json:"revision,omitempty"`
+	Serial    *string  `json:"serial,omitempty"`
+	NotBefore *int64   `json:"notBefore,omitempty"`
+	NotAfter  *int64   `json:"notAfter,omitempty"`
+	Key       *KeySpec `json:"key,omitempty"`
 }
 
 // VersionItem 版本列表项 DTO
@@ -34,10 +35,28 @@ type VersionItem struct {
 	State          *string `json:"state"`
 }
 
+// normalizeState 把"有效但已过期"修正为"已过期"，吊销优先
+// 数据库只存 V/R，E 在查询时按 expiration_time 实时计算，不落库
+func normalizeState(state *string, notAfter *int64) *string {
+	if state == nil {
+		return nil
+	}
+	// 吊销是终态，不覆盖
+	if *state == StateRevoked {
+		return state
+	}
+	// 有效但已过期 → E
+	if *state == StateValid && notAfter != nil && *notAfter < nowMillis() {
+		expired := StateExpired
+		return &expired
+	}
+	return state
+}
+
 // ---------- 拼链 ----------
 
-func BuildCAChain(certID string, includeRoot bool) (string, error) {
-	cur, err := models.GetCertificateByCertID(certID)
+func BuildCAChain(dao *models.DB, certID string, includeRoot bool) (string, error) {
+	cur, err := dao.GetCertificateByCertID(certID)
 	if err != nil || cur == nil {
 		return "", errors.New("certificate not found")
 	}
@@ -46,7 +65,7 @@ func BuildCAChain(certID string, includeRoot bool) (string, error) {
 		if cur.Pathlev == PathLevCA && !includeRoot {
 			break
 		}
-		v, err := models.GetLatestVersion(cur.CertID)
+		v, err := dao.GetLatestVersion(cur.CertID)
 		if err != nil || v == nil {
 			break
 		}
@@ -54,7 +73,7 @@ func BuildCAChain(certID string, includeRoot bool) (string, error) {
 		if cur.ParentID == nil {
 			break
 		}
-		cur, err = models.GetCertificateByCertID(*cur.ParentID)
+		cur, err = dao.GetCertificateByCertID(*cur.ParentID)
 		if err != nil {
 			break
 		}
@@ -62,18 +81,18 @@ func BuildCAChain(certID string, includeRoot bool) (string, error) {
 	return out, nil
 }
 
-func BuildCertChain(certID string, includeRoot bool) (string, error) {
-	cert, err := models.GetCertificateByCertID(certID)
+func BuildCertChain(dao *models.DB, certID string, includeRoot bool) (string, error) {
+	cert, err := dao.GetCertificateByCertID(certID)
 	if err != nil || cert == nil {
 		return "", errors.New("certificate not found")
 	}
-	v, err := models.GetLatestVersion(certID)
+	v, err := dao.GetLatestVersion(certID)
 	if err != nil || v == nil {
 		return "", errors.New("version not found")
 	}
 	chain := *v.Cert
 	if cert.ParentID != nil {
-		caChain, err := BuildCAChain(*cert.ParentID, includeRoot)
+		caChain, err := BuildCAChain(dao, *cert.ParentID, includeRoot)
 		if err != nil {
 			return "", err
 		}
@@ -83,8 +102,8 @@ func BuildCertChain(certID string, includeRoot bool) (string, error) {
 }
 
 // FindRootCASvc 从任意证书向上找到根 CA
-func FindRootCASvc(certID string) (*RootInfo, error) {
-	cur, err := models.GetCertificateByCertID(certID)
+func FindRootCASvc(dao *models.DB, certID string) (*RootInfo, error) {
+	cur, err := dao.GetCertificateByCertID(certID)
 	if err != nil || cur == nil {
 		return nil, errors.New("certificate not found")
 	}
@@ -92,13 +111,13 @@ func FindRootCASvc(certID string) (*RootInfo, error) {
 	chain := make([]string, 0, 4)
 	var root *models.Certificate
 
-	for cur != nil {
+	for {
 		chain = append(chain, cur.CertID)
 		if cur.ParentID == nil {
 			root = cur
 			break
 		}
-		cur, err = models.GetCertificateByCertID(*cur.ParentID)
+		cur, err = dao.GetCertificateByCertID(*cur.ParentID)
 		if err != nil || cur == nil {
 			break
 		}
@@ -118,34 +137,34 @@ func FindRootCASvc(certID string) (*RootInfo, error) {
 	}
 
 	// 取最新版本信息
-	v, err := models.GetLatestVersion(root.CertID)
+	v, err := dao.GetLatestVersion(root.CertID)
 	if err == nil && v != nil {
 		info.Serial = v.Serial
 		info.NotBefore = v.EffectiveTime
 		info.NotAfter = v.ExpirationTime
-		info.State = v.State
+		info.State = normalizeState(v.State, v.ExpirationTime)
 	}
 
 	return info, nil
 }
 
 // BuildRootPEM 从任意证书向上找到根 CA，返回根 CA 的 PEM
-func BuildRootPEM(certID string) (string, error) {
-	cur, err := models.GetCertificateByCertID(certID)
+func BuildRootPEM(dao *models.DB, certID string) (string, error) {
+	cur, err := dao.GetCertificateByCertID(certID)
 	if err != nil || cur == nil {
 		return "", errors.New("certificate not found")
 	}
 
 	// 向上遍历，直到 parent_id == nil
-	for cur != nil {
+	for {
 		if cur.ParentID == nil {
-			v, err := models.GetLatestVersion(cur.CertID)
+			v, err := dao.GetLatestVersion(cur.CertID)
 			if err != nil || v == nil {
 				return "", errors.New("root version not found")
 			}
 			return *v.Cert, nil
 		}
-		cur, err = models.GetCertificateByCertID(*cur.ParentID)
+		cur, err = dao.GetCertificateByCertID(*cur.ParentID)
 		if err != nil || cur == nil {
 			break
 		}
@@ -155,8 +174,8 @@ func BuildRootPEM(certID string) (string, error) {
 
 // ListCertsByGenres 按多个类型列出证书
 // genres 为空 → 全部
-func ListCertsByGenres(offset, limit int, count *int64, genres []int, hasKey int, userID string) ([]CertListItem, error) {
-	certs, err := models.ListCertificatesByGenres(offset, limit, count, genres, hasKey, userID)
+func ListCertsByGenres(dao *models.DB, offset, limit int, count *int64, genres []int, hasKey int) ([]CertListItem, error) {
+	certs, err := dao.ListCertificatesByGenres(offset, limit, count, genres, hasKey)
 	if err != nil {
 		return nil, err
 	}
@@ -172,13 +191,19 @@ func ListCertsByGenres(offset, limit int, count *int64, genres []int, hasKey int
 			Genre:    c.Genre,
 			HasKey:   c.HasKey,
 		}
-		v, err := models.GetLatestVersion(c.CertID)
+		v, err := dao.GetLatestVersion(c.CertID)
 		if err == nil && v != nil {
 			item.Revision = v.Revision
 			item.Serial = v.Serial
 			item.NotBefore = v.EffectiveTime
 			item.NotAfter = v.ExpirationTime
-			item.State = v.State
+			item.State = normalizeState(v.State, v.ExpirationTime)
+			if v.Cert != nil {
+				if cert, perr := parseCertPEM(*v.Cert); perr == nil {
+					spec := inferKeySpec(cert)
+					item.Key = &spec
+				}
+			}
 		}
 		items = append(items, item)
 	}
@@ -186,13 +211,13 @@ func ListCertsByGenres(offset, limit int, count *int64, genres []int, hasKey int
 }
 
 // ListCertVersionsSvc 列出某证书的所有版本
-func ListCertVersionsSvc(certID string) ([]VersionItem, error) {
-	cert, err := models.GetCertificateByCertID(certID)
+func ListCertVersionsSvc(dao *models.DB, certID string) ([]VersionItem, error) {
+	cert, err := dao.GetCertificateByCertID(certID)
 	if err != nil || cert == nil {
 		return nil, errors.New("certificate not found")
 	}
 
-	versions, err := models.ListVersionsByCertID(certID)
+	versions, err := dao.ListVersionsByCertID(certID)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +233,7 @@ func ListCertVersionsSvc(certID string) ([]VersionItem, error) {
 			EffectiveTime:  v.EffectiveTime,
 			ExpirationTime: v.ExpirationTime,
 			RevocationTime: v.RevocationTime,
-			State:          v.State,
+			State:          normalizeState(v.State, v.ExpirationTime),
 		})
 	}
 	return items, nil

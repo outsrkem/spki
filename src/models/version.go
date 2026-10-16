@@ -1,21 +1,101 @@
 package models
 
-// Certificate 对应 certificate 表
-//type Certificate struct {
-//	ID       int     `gorm:"column:id;primaryKey;autoIncrement"`
-//	CertID   string  `gorm:"column:certid;uniqueIndex:uk_certid"`
-//	UserID   string  `gorm:"column:user_id"`
-//	Title    *string `gorm:"column:title"`
-//	State    *string `gorm:"column:state"`
-//	Subject  *string `gorm:"column:subject"`
-//	ParentID *string `gorm:"column:parent_id"`
-//	Pathlev  int     `gorm:"column:pathlev"`
-//	Genre    int     `gorm:"column:genre"`
-//	CertReq  *string `gorm:"column:cert_req"`
-//}
-//
-//func (Certificate) TableName() string { return "certificate" }
-//func InstallCertVersion(data Version) error {
-//	err := mysql.OrmDB.Create(&data).Error
-//	return err
-//}
+import (
+	"errors"
+
+	"gorm.io/gorm"
+)
+
+type Version struct {
+	ID             int     `gorm:"column:kid;primaryKey;autoIncrement"`
+	InstanceID     string  `gorm:"column:instance_id"`
+	Revision       *int    `gorm:"column:revision"`
+	CertID         *string `gorm:"column:certid"`
+	KeyID          *string `gorm:"column:keyid"`
+	Serial         *string `gorm:"column:serial"`
+	Fingerprint    *string `gorm:"column:fingerprint"`
+	Cert           *string `gorm:"column:cert"`
+	EffectiveTime  *int64  `gorm:"column:effective_time"`
+	ExpirationTime *int64  `gorm:"column:expiration_time"`
+	RevocationTime *int64  `gorm:"column:revocation_time"`
+	State          *string `gorm:"column:state"`
+}
+
+func (Version) TableName() string { return "pki_version" }
+
+func (d *DB) GetLatestVersion(certID string) (*Version, error) {
+	var v Version
+	err := d.WithInstance().
+		Where("certid = ?", certID).
+		Order("revision desc").
+		First(&v).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &v, err
+}
+
+func (d *DB) ListVersionsByCertID(certID string) ([]Version, error) {
+	var list []Version
+	err := d.WithInstance().
+		Where("certid = ?", certID).
+		Order("revision asc").
+		Find(&list).Error
+	return list, err
+}
+
+// GetCertificateBySerial 按序列号（hex 字符串）查证书记录
+// 注意：同一 serial 理论上只对应一张证书，但版本表里可能有多个 revision
+// 这里返回 certificate 主记录
+func (d *DB) GetCertificateBySerial(serial string) (*Certificate, error) {
+	var v Version
+	err := d.db.Where("serial = ?", serial).Order("revision DESC").First(&v).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if v.CertID == nil {
+		return nil, nil
+	}
+	var cert Certificate
+	err = d.db.Where("cert_id = ?", *v.CertID).First(&cert).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &cert, nil
+}
+
+const StateRevoked = "R"
+
+// ListRevokedByIssuerBySerial 查某个 issuer 下、指定 serial 的吊销记录
+// 返回最新的 version 记录（含 RevocationTime），未吊销返回 nil, nil
+func (d *DB) ListRevokedByIssuerBySerial(issuerID, serial string) (*Version, error) {
+	// 先找 issuer 下的所有直接子证书
+	var certIDs []string
+	err := d.db.Model(&Certificate{}).
+		Where("parent_id = ?", issuerID).
+		Pluck("cert_id", &certIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(certIDs) == 0 {
+		return nil, nil
+	}
+
+	var v Version
+	err = d.db.Where("cert_id IN ? AND serial = ? AND state = ?", certIDs, serial, StateRevoked).
+		Order("revision DESC").
+		First(&v).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &v, nil
+}

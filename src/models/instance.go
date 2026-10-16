@@ -18,13 +18,20 @@ type Instance struct {
 	CreateTime    int64  `gorm:"column:create_time"`
 }
 
-func (Instance) TableName() string { return "instance" }
+func (Instance) TableName() string { return "pki_instance" }
 
 // ---------- Instance ----------
 
 // CreateInstance 插入实例
 func CreateInstance(data Instance) error {
 	return mysql.OrmDB.Create(&data).Error
+}
+
+// GetInstance queries an instance by DomainId
+func GetInstance(DomainId string) (Instance, error) {
+	var instance Instance
+	r := mysql.OrmDB.Model(&Instance{}).Where("domain_id = ?", DomainId).First(&instance)
+	return instance, r.Error
 }
 
 // GetInstanceByID 按 instanceID 查实例

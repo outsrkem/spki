@@ -30,7 +30,7 @@ type ImportCAResp struct {
 //   - 只允许 IsCA=true 的证书
 //   - 中间 CA 必须有父 CA
 //   - 只支持 X.509 证书和 PKCS#8 私钥
-func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error) {
+func ImportCASvc(dao *models.DB, req *ImportCAReq) (*ImportCAResp, error) {
 	// 1. 解析证书
 	cert, err := parseSingleCertPEM(req.CertPem)
 	if err != nil {
@@ -39,7 +39,7 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 
 	// 1.5 证书指纹判重
 	certFP := calcCertFingerprint(cert)
-	if existing, err := models.GetVersionByFingerprint(certFP); err != nil {
+	if existing, err := dao.GetVersionByFingerprint(certFP); err != nil {
 		return nil, fmt.Errorf("check cert fingerprint: %w", err)
 	} else if existing != nil {
 		return nil, fmt.Errorf("certificate already imported: certId=%s", *existing.CertID)
@@ -76,7 +76,7 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		if err != nil {
 			return nil, fmt.Errorf("calc key fingerprint: %w", err)
 		}
-		if existing, err := models.GetPrivateKeyByFingerprint(keyFP); err != nil {
+		if existing, err := dao.GetPrivateKeyByFingerprint(keyFP); err != nil {
 			return nil, fmt.Errorf("check key fingerprint: %w", err)
 		} else if existing != nil {
 			return nil, fmt.Errorf("private key already imported: keyId=%s", existing.KeyID)
@@ -96,7 +96,7 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 	var parentID *string
 	if !isRoot {
 		if req.IssuerID != "" {
-			parent, err := models.GetCertificateByCertID(req.IssuerID)
+			parent, err := dao.GetCertificateByCertID(req.IssuerID)
 			if err != nil || parent == nil {
 				return nil, errors.New("issuerId not found")
 			}
@@ -105,7 +105,7 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 			}
 			parentID = &parent.CertID
 		} else {
-			parent, err := models.FindCASubject(cert.Issuer.String())
+			parent, err := dao.FindCASubject(cert.Issuer.String())
 			if err != nil {
 				return nil, fmt.Errorf("find parent: %w", err)
 			}
@@ -133,7 +133,6 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 
 	certRec := models.Certificate{
 		CertID:   certID,
-		UserID:   userID,
 		Title:    req.Title,
 		Subject:  &subject,
 		ParentID: parentID,
@@ -176,7 +175,7 @@ func ImportCASvc(userID, account string, req *ImportCAReq) (*ImportCAResp, error
 		State:          &state,
 	}
 
-	if err := models.SaveCertBundle(certRec, keyRec, version, account); err != nil {
+	if err := dao.SaveCertBundle(certRec, keyRec, version); err != nil {
 		return nil, err
 	}
 

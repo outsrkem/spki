@@ -3,8 +3,6 @@ package models
 import (
 	"errors"
 
-	"spki/src/database/mysql"
-
 	"gorm.io/gorm"
 )
 
@@ -14,231 +12,55 @@ const (
 	GenreLeaf  = 3
 )
 
-// ---------- 结构体 ----------
-
-type Certificate struct {
-	ID       int     `gorm:"column:kid;primaryKey;autoIncrement"`
-	CertID   string  `gorm:"column:certid"`
-	UserID   string  `gorm:"column:user_id"`
-	Title    *string `gorm:"column:title"`
-	Subject  *string `gorm:"column:subject"`
-	ParentID *string `gorm:"column:parent_id"`
-	Pathlev  int     `gorm:"column:pathlev"`
-	Genre    int     `gorm:"column:genre"`
-	HasKey   int8    `gorm:"column:has_key"`
-	CertReq  *string `gorm:"column:cert_req"`
-}
-
-func (Certificate) TableName() string { return "certificate" }
-
-type PrivateKey struct {
-	ID          int     `gorm:"column:kid;primaryKey;autoIncrement"`
-	KeyID       string  `gorm:"column:keyid"`
-	PrivateKey  string  `gorm:"column:private_key"`
-	Passphrase  string  `gorm:"column:passphrase"` // 加密后的口令
-	Fingerprint *string `gorm:"column:fingerprint"`
-	CreateTime  int64   `gorm:"column:create_time"`
-}
-
-func (PrivateKey) TableName() string { return "private_key" }
-
-type Version struct {
-	ID             int     `gorm:"column:kid;primaryKey;autoIncrement"`
-	Revision       *int    `gorm:"column:revision"`
-	CertID         *string `gorm:"column:certid"`
-	KeyID          *string `gorm:"column:keyid"`
-	Serial         *string `gorm:"column:serial"`
-	Fingerprint    *string `gorm:"column:fingerprint"`
-	Cert           *string `gorm:"column:cert"`
-	EffectiveTime  *int64  `gorm:"column:effective_time"`
-	ExpirationTime *int64  `gorm:"column:expiration_time"`
-	RevocationTime *int64  `gorm:"column:revocation_time"`
-	State          *string `gorm:"column:state"`
-}
-
-func (Version) TableName() string { return "version" }
-
-type Creator struct {
-	ID       int     `gorm:"column:kid;primaryKey;autoIncrement"`
-	UserID   string  `gorm:"column:user_id"`
-	Name     *string `gorm:"column:name"`
-	SyncTime *int64  `gorm:"column:sync_time"`
-}
-
-func (Creator) TableName() string { return "creator" }
-
-// ---------- Certificate ----------
-
-func CreateCertificate(data Certificate) error {
-	return mysql.OrmDB.Create(&data).Error
-}
-
-func GetCertificateByCertID(certID string) (*Certificate, error) {
-	var c Certificate
-	err := mysql.OrmDB.Where("certid = ?", certID).First(&c).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	return &c, err
-}
-
-// UpdateVersionState 更新某证书所有版本的 state
-func UpdateVersionState(certID, state string) error {
-	return mysql.OrmDB.Model(&Version{}).
-		Where("certid = ?", certID).
-		Update("state", state).Error
-}
-
-func DeleteCertificate(certID string) error {
-	return mysql.OrmDB.Where("certid = ?", certID).Delete(&Certificate{}).Error
-}
-
-// ListSignableCAs 查出可以签发下级证书的 CA（有私钥）
-func ListSignableCAs(userID string) ([]Certificate, error) {
-	var list []Certificate
-	q := mysql.OrmDB.
-		Where("genre IN (?, ?) AND has_key = 1", GenreRoot, GenreInter)
-	if userID != "" {
-		q = q.Where("user_id = ?", userID)
-	}
-	err := q.Order("kid desc").Find(&list).Error
-	return list, err
-}
-
-// ---------- PrivateKey ----------
-
-func InstallPrivateKey(data PrivateKey) error {
-	return mysql.OrmDB.Create(&data).Error
-}
-
-func GetPrivateKeyByKeyID(keyID string) (*PrivateKey, error) {
-	var k PrivateKey
-	err := mysql.OrmDB.Where("keyid = ?", keyID).First(&k).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	return &k, err
-}
-
-func DeletePrivateKey(keyID string) error {
-	return mysql.OrmDB.Where("keyid = ?", keyID).Delete(&PrivateKey{}).Error
-}
-
-func CountPrivateKeyUsage(keyID string) (int64, error) {
-	var cnt int64
-	err := mysql.OrmDB.Model(&Version{}).Where("keyid = ?", keyID).Count(&cnt).Error
-	return cnt, err
-}
-
-// ---------- Version ----------
-
-func InstallCertVersion(data Version) error {
-	return mysql.OrmDB.Create(&data).Error
-}
-
-func GetLatestVersion(certID string) (*Version, error) {
-	var v Version
-	err := mysql.OrmDB.Where("certid = ?", certID).Order("revision desc").First(&v).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	return &v, err
-}
-
-func ListVersionsByCertID(certID string) ([]Version, error) {
-	var list []Version
-	err := mysql.OrmDB.Where("certid = ?", certID).Order("revision asc").Find(&list).Error
-	return list, err
-}
-
-func UpdateVersionRevocation(certID string, revocationTime int64) error {
-	return mysql.OrmDB.Model(&Version{}).
-		Where("certid = ?", certID).
-		Update("revocation_time", revocationTime).Error
-}
-
-func DeleteVersionsByCertID(certID string) error {
-	return mysql.OrmDB.Where("certid = ?", certID).Delete(&Version{}).Error
-}
-
-// ---------- Creator ----------
-
-func CountCreator(userID string) (int64, error) {
-	var cnt int64
-	err := mysql.OrmDB.Model(&Creator{}).Where("user_id = ?", userID).Count(&cnt).Error
-	return cnt, err
-}
-
-func InstallCreator(data Creator) error {
-	return mysql.OrmDB.Create(&data).Error
-}
-
 // ---------- 事务版：SaveCertBundle ----------
 
-// SaveCertBundle 事务保存 certificate + private_key + version
-// 若 creator 不存在则自动创建
-func SaveCertBundle(cert Certificate, key *PrivateKey, version Version, account string) error {
-	return mysql.OrmDB.Transaction(func(tx *gorm.DB) error {
-		// creator
-		var cnt int64
-		if err := tx.Model(&Creator{}).Where("user_id = ?", cert.UserID).Count(&cnt).Error; err != nil {
-			return err
-		}
-		if cnt == 0 {
-			creator := Creator{
-				UserID: cert.UserID,
-				Name:   strPtrIf(account),
-			}
-			if err := tx.Create(&creator).Error; err != nil {
-				return err
-			}
-		}
-		// certificate
+func (d *DB) SaveCertBundle(cert Certificate, key *PrivateKey, version Version) error {
+	cert.InstanceID = d.instanceId
+	version.InstanceID = d.instanceId
+	if key != nil {
+		key.InstanceID = d.instanceId
+	}
+	return d.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&cert).Error; err != nil {
 			return err
 		}
-		// private_key（CSR 模式为 nil）
 		if key != nil {
 			if err := tx.Create(key).Error; err != nil {
 				return err
 			}
 		}
-		// version
-		if err := tx.Create(&version).Error; err != nil {
-			return err
-		}
-		return nil
+		return tx.Create(&version).Error
 	})
 }
 
 // RevokeCertTx 事务吊销：只更新 version
-func RevokeCertTx(certID string, state string, revocationTime int64) error {
-	return mysql.OrmDB.Transaction(func(tx *gorm.DB) error {
+func (d *DB) RevokeCertTx(certID string, state string, revocationTime int64) error {
+	return d.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&Version{}).
-			Where("certid = ?", certID).
+			Where("instance_id = ? AND certid = ?", d.instanceId, certID).
 			Update("state", state).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&Version{}).
-			Where("certid = ?", certID).
-			Update("revocation_time", revocationTime).Error; err != nil {
-			return err
-		}
-		return nil
+		return tx.Model(&Version{}).
+			Where("instance_id = ? AND certid = ?", d.instanceId, certID).
+			Update("revocation_time", revocationTime).Error
 	})
 }
 
 // DeleteCertTx 事务删除
-func DeleteCertTx(certID string) error {
-	return mysql.OrmDB.Transaction(func(tx *gorm.DB) error {
+func (d *DB) DeleteCertTx(certID string) error {
+	return d.db.Transaction(func(tx *gorm.DB) error {
 		var versions []Version
-		if err := tx.Where("certid = ?", certID).Find(&versions).Error; err != nil {
+		if err := tx.Where("instance_id = ? AND certid = ?", d.instanceId, certID).
+			Find(&versions).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("certid = ?", certID).Delete(&Version{}).Error; err != nil {
+		if err := tx.Where("instance_id = ? AND certid = ?", d.instanceId, certID).
+			Delete(&Version{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("certid = ?", certID).Delete(&Certificate{}).Error; err != nil {
+		if err := tx.Where("instance_id = ? AND certid = ?", d.instanceId, certID).
+			Delete(&Certificate{}).Error; err != nil {
 			return err
 		}
 		for _, v := range versions {
@@ -246,11 +68,14 @@ func DeleteCertTx(certID string) error {
 				continue
 			}
 			var cnt int64
-			if err := tx.Model(&Version{}).Where("keyid = ?", *v.KeyID).Count(&cnt).Error; err != nil {
+			if err := tx.Model(&Version{}).
+				Where("instance_id = ? AND keyid = ?", d.instanceId, *v.KeyID).
+				Count(&cnt).Error; err != nil {
 				return err
 			}
 			if cnt == 0 {
-				if err := tx.Where("keyid = ?", *v.KeyID).Delete(&PrivateKey{}).Error; err != nil {
+				if err := tx.Where("instance_id = ? AND keyid = ?", d.instanceId, *v.KeyID).
+					Delete(&PrivateKey{}).Error; err != nil {
 					return err
 				}
 			}
@@ -260,62 +85,50 @@ func DeleteCertTx(certID string) error {
 }
 
 // ListRevokedByIssuer 查出某 CA 下所有已吊销的末端证书版本
-func ListRevokedByIssuer(issuerID string) ([]Version, error) {
+func (d *DB) ListRevokedByIssuer(issuerID string) ([]Version, error) {
 	var list []Version
-	err := mysql.OrmDB.
-		Table("version").
-		Joins("JOIN certificate ON certificate.certid = version.certid").
-		Where("certificate.parent_id = ? AND version.state = ?", issuerID, "R").
+	err := d.db.
+		Table("pki_version").
+		Joins("JOIN pki_certificate ON pki_certificate.certid = pki_version.certid").
+		Where("pki_version.instance_id = ?", d.instanceId).
+		Where("pki_certificate.instance_id = ?", d.instanceId).
+		Where("pki_certificate.parent_id = ? AND pki_version.state = ?", issuerID, "R").
 		Find(&list).Error
 	return list, err
 }
 
 // GetMaxRevision 取某证书当前最大版本号
-func GetMaxRevision(certID string) (int, error) {
-	var max int
-	err := mysql.OrmDB.Model(&Version{}).
+func (d *DB) GetMaxRevision(certID string) (int, error) {
+	var m int
+	err := d.WithInstance().
+		Model(&Version{}).
 		Where("certid = ?", certID).
 		Select("COALESCE(MAX(revision), 0)").
-		Scan(&max).Error
-	return max, err
+		Scan(&m).Error
+	return m, err
 }
 
 // SaveVersionWithKey 事务：写 private_key（可选）+ version
-// 续期时若复用旧私钥，key 传 nil
-func SaveVersionWithKey(key *PrivateKey, version Version) error {
-	return mysql.OrmDB.Transaction(func(tx *gorm.DB) error {
+func (d *DB) SaveVersionWithKey(key *PrivateKey, version Version) error {
+	version.InstanceID = d.instanceId
+	if key != nil {
+		key.InstanceID = d.instanceId
+	}
+	return d.db.Transaction(func(tx *gorm.DB) error {
 		if key != nil {
 			if err := tx.Create(key).Error; err != nil {
 				return err
 			}
 		}
-		if err := tx.Create(&version).Error; err != nil {
-			return err
-		}
-		return nil
+		return tx.Create(&version).Error
 	})
-}
-
-// ListCertificatesByGenre 按类型列出证书
-// genre = -1 时返回全部
-func ListCertificatesByGenre(genre int, userID string) ([]Certificate, error) {
-	var list []Certificate
-	q := mysql.OrmDB.Model(&Certificate{})
-	if genre > 0 {
-		q = q.Where("genre = ?", genre)
-	}
-	if userID != "" {
-		q = q.Where("user_id = ?", userID)
-	}
-	err := q.Order("kid desc").Find(&list).Error
-	return list, err
 }
 
 // ListCertificatesByGenres 按多个类型列出证书
 // hasKey: -1 不过滤；0 只查无私钥；1 只查有私钥
-func ListCertificatesByGenres(offset, limit int, count *int64, genres []int, hasKey int, userID string) ([]Certificate, error) {
+func (d *DB) ListCertificatesByGenres(offset, limit int, count *int64, genres []int, hasKey int) ([]Certificate, error) {
 	var list []Certificate
-	q := mysql.OrmDB.Model(&Certificate{})
+	q := d.WithInstance().Model(&Certificate{})
 
 	if len(genres) > 0 {
 		q = q.Where("genre IN ?", genres)
@@ -323,18 +136,15 @@ func ListCertificatesByGenres(offset, limit int, count *int64, genres []int, has
 	if hasKey >= 0 {
 		q = q.Where("has_key = ?", hasKey)
 	}
-	if userID != "" {
-		q = q.Where("user_id = ?", userID)
-	}
 
 	err := q.Count(count).Order("kid DESC").Offset(offset).Limit(limit).Find(&list).Error
 	return list, err
 }
 
 // FindCASubject 按 Subject 查 CA（只查根 CA 和中间 CA）
-func FindCASubject(subject string) (*Certificate, error) {
+func (d *DB) FindCASubject(subject string) (*Certificate, error) {
 	var c Certificate
-	err := mysql.OrmDB.
+	err := d.WithInstance().
 		Where("subject = ? AND genre IN (?, ?)", subject, 1, 2).
 		First(&c).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -344,9 +154,9 @@ func FindCASubject(subject string) (*Certificate, error) {
 }
 
 // GetVersionByFingerprint 按证书指纹查版本
-func GetVersionByFingerprint(fp string) (*Version, error) {
+func (d *DB) GetVersionByFingerprint(fp string) (*Version, error) {
 	var v Version
-	err := mysql.OrmDB.Where("fingerprint = ?", fp).First(&v).Error
+	err := d.WithInstance().Where("fingerprint = ?", fp).First(&v).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
@@ -354,20 +164,11 @@ func GetVersionByFingerprint(fp string) (*Version, error) {
 }
 
 // GetPrivateKeyByFingerprint 按公钥指纹查私钥
-func GetPrivateKeyByFingerprint(fp string) (*PrivateKey, error) {
+func (d *DB) GetPrivateKeyByFingerprint(fp string) (*PrivateKey, error) {
 	var k PrivateKey
-	err := mysql.OrmDB.Where("fingerprint = ?", fp).First(&k).Error
+	err := d.WithInstance().Where("fingerprint = ?", fp).First(&k).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	return &k, err
-}
-
-// ---------- 工具 ----------
-
-func strPtrIf(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }

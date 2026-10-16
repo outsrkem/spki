@@ -1,0 +1,119 @@
+[
+  {
+    "actionInfo": {
+      "name": "spki:ca:init",
+      "group": "ReadWrite",
+      "title": "初始化根CA",
+      "description": "初始化根证书颁发机构",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:ca:issue",
+      "group": "ReadWrite",
+      "title": "签发中间CA",
+      "description": "签发中间证书颁发机构",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:ca:import",
+      "group": "ReadWrite",
+      "title": "导入CA",
+      "description": "导入外部CA证书",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:cert:issue",
+      "group": "ReadWrite",
+      "title": "签发末端证书",
+      "description": "签发末端实体证书",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:cert:list",
+      "group": "ListOnly",
+      "title": "列出证书",
+      "description": "列出证书列表，支持按类型过滤",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:cert:renew",
+      "group": "ReadWrite",
+      "title": "续签证书",
+      "description": "续签证书，仅延长有效期",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:cert:revoke",
+      "group": "ReadWrite",
+      "title": "吊销证书",
+      "description": "吊销指定证书",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:cert:delete",
+      "group": "DelOnly",
+      "title": "删除证书",
+      "description": "删除证书，同时删除私钥和所有版本",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:cert:chain",
+      "group": "ReadOnly",
+      "title": "导出证书链",
+      "description": "导出证书链，支持是否包含根证书",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:cert:root",
+      "group": "ReadOnly",
+      "title": "查找根CA",
+      "description": "从任意证书向上查找根CA",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:cert:versions",
+      "group": "ListOnly",
+      "title": "列出版本",
+      "description": "列出某证书的所有版本",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:cert:bundle",
+      "group": "ReadOnly",
+      "title": "下载证书包",
+      "description": "下载证书及其私钥",
+      "status": "enabled"
+    }
+  },
+  {
+    "actionInfo": {
+      "name": "spki:crl:download",
+      "group": "ReadOnly",
+      "title": "下载CRL",
+      "description": "下载证书吊销列表",
+      "status": "enabled"
+    }
+  }
+]

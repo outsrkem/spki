@@ -19,8 +19,8 @@ import (
 //	└── {CN}_{YYYYMMDD}_{UnixMilli}/
 //	    ├── {CN}_{YYYYMMDD}_{UnixMilli}.pem
 //	    └── {CN}_{YYYYMMDD}_{UnixMilli}.key
-func GetCertZip(certID string) ([]byte, string, error) {
-	v, err := models.GetLatestVersion(certID)
+func GetCertZip(dao *models.DB, certID string) ([]byte, string, error) {
+	v, err := dao.GetLatestVersion(certID)
 	if err != nil || v == nil {
 		return nil, "", errors.New("version not found")
 	}
@@ -45,7 +45,7 @@ func GetCertZip(certID string) ([]byte, string, error) {
 	// 3. 私钥 PEM
 	var keyPEM string
 	if v.KeyID != nil {
-		keyRec, err := models.GetPrivateKeyByKeyID(*v.KeyID)
+		keyRec, err := dao.GetPrivateKeyByKeyID(*v.KeyID)
 		if err == nil && keyRec != nil {
 			signer, err := decryptPrivateKey(keyRec.PrivateKey, keyRec.Passphrase)
 			if err == nil {
