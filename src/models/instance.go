@@ -18,7 +18,7 @@ type Instance struct {
 	CreateTime    int64  `gorm:"column:create_time"`
 }
 
-func (Instance) TableName() string { return "instance" }
+func (Instance) TableName() string { return "pki_instance" }
 
 // ---------- Instance ----------
 
