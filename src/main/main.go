@@ -29,6 +29,7 @@ func main() {
 
 	hlog.Info("start server")
 	svc := server.Default(server.WithHostPorts(cfg.Spki.App.Bind), server.WithExitWaitTime(0*time.Second))
-	route.Routes(svc)
+	route.Middleware(svc)
+	route.AppRoute(svc)
 	svc.Spin()
 }
