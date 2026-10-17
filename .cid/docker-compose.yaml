@@ -1,0 +1,11 @@
+version: "3"
+services:
+  spki:
+    image: swr.cn-north-1.myhuaweicloud.com/onge/spki:build_0
+    restart: always
+    ports:
+      - "0.0.0.0:28180:18180/tcp"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /opt/service/spki/logs:/opt/service/spki/logs
+      - /opt/service/spki/spki.yaml:/etc/spki/spki.yaml:ro
