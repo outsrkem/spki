@@ -21,14 +21,18 @@ const xAuthTokenKey = "X-Auth-Token"
 func RequestId() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		klog := slog.FromContext(c)
-		xRequestId := string(c.GetHeader("X-Request-Kid"))
+		xRequestId := string(c.GetHeader("X-Request-Id"))
 		if xRequestId == "" {
 			xRequestId = strings.ReplaceAll(uuid.New().String(), "-", "")
-			c.Response.Header.Set(xRequestIdKey, xRequestId)
+			c.Request.Header.Set("X-Request-Id", xRequestId)
 			klog.Warnf("request id is empty, Set a new request id: %s", xRequestId)
 		}
 		c.Set("xRequestId", xRequestId)
 		c.Next(ctx)
+		if c.Response.Header.Get("X-Request-Id") == "" {
+			c.Response.Header.Set("X-Request-Id", xRequestId)
+			klog.Debugf("Set X-Request-Id in response: %s", xRequestId)
+		}
 	}
 }
 
