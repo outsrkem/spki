@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"spki/src/config"
 	"spki/src/pkg/answer"
+	"spki/src/pkg/common"
 	"spki/src/pkg/core"
 	"spki/src/slog"
 	"strings"
@@ -107,6 +108,14 @@ func apc(action string) app.HandlerFunc {
 		c.Set("domainName", resp.Data.Payload.User.Domain.Name)
 		c.Set("userId", resp.Data.Payload.User.Id)
 		c.Set("account", resp.Data.Payload.User.Name.Account)
+		info := &common.UserInfo{
+			InstanceID: instanceId,
+			DomainID:   resp.Data.Payload.User.Domain.Id,
+			DomainName: resp.Data.Payload.User.Domain.Name,
+			UserID:     resp.Data.Payload.User.Id,
+			Account:    resp.Data.Payload.User.Name.Account,
+		}
+		ctx = common.WithContext(ctx, info)
 		klog.Debug("end check action")
 		c.Next(ctx)
 	}

@@ -2,6 +2,7 @@ package cacert
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"spki/src/models"
@@ -278,7 +279,8 @@ func ListCert() app.HandlerFunc {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", "参数错误: "+err.Error(), ""))
 			return
 		}
-
+		a, _ := common.FromContext(ctx)
+		fmt.Println("====>", a.Account)
 		// 校验 genre 范围
 		for _, g := range query.Genre {
 			if g < 1 || g > 3 {
