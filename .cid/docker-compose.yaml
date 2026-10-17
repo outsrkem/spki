@@ -1,10 +1,18 @@
 version: "3"
+# networks:
+#   network_0:
+#     external: true
 services:
   spki:
     image: swr.cn-north-1.myhuaweicloud.com/onge/spki:build_0
     restart: always
+    container_name: spki
+    # networks:
+    #   network_0:
+    #     aliases:
+    #       - spki.svc.local
     ports:
-      - "0.0.0.0:28180:18180/tcp"
+      - "0.0.0.0:18210:18210/tcp"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /opt/service/spki/logs:/opt/service/spki/logs

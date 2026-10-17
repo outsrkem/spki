@@ -1,8 +1,8 @@
 spki:
   app:
-    bind: "0.0.0.0:18183"
+    bind: "0.0.0.0:18210"
   vector:
-    k0: "" # head -c 32 /dev/random | base64 或 openssl rand -base64 32
+    k0: "" # head -c 32 /dev/random | base64
   database:
     host: "127.0.0.1"
     port: "3306"
@@ -12,11 +12,12 @@ spki:
   ats:
     endpoint: "http://127.0.0.1:18185"
   uias:
-    endpoint: "http://127.0.0.1:30078"
+    endpoint: "http://uias.svc.local:18180"
   log:
     level: "DEBUG"
     output:
       stdout: "-"
+
       # file:
       #     name: "/opt/service/skpi/logs/service.log"
       #     maxsize: 1
