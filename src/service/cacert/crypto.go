@@ -95,8 +95,8 @@ func generateSubjectKeyID(pubDER []byte, algo string) ([]byte, error) {
 }
 
 func randomSerial() (*big.Int, error) {
-	max := new(big.Int).Lsh(big.NewInt(1), 128)
-	s, err := rand.Int(rand.Reader, max)
+	m := new(big.Int).Lsh(big.NewInt(1), 128)
+	s, err := rand.Int(rand.Reader, m)
 	if err != nil {
 		return nil, err
 	}
