@@ -35,6 +35,24 @@ type VersionItem struct {
 	State          *string `json:"state"`
 }
 
+// normalizeState 把"有效但已过期"修正为"已过期"，吊销优先
+// 数据库只存 V/R，E 在查询时按 expiration_time 实时计算，不落库
+func normalizeState(state *string, notAfter *int64) *string {
+	if state == nil {
+		return nil
+	}
+	// 吊销是终态，不覆盖
+	if *state == StateRevoked {
+		return state
+	}
+	// 有效但已过期 → E
+	if *state == StateValid && notAfter != nil && *notAfter < nowMillis() {
+		expired := StateExpired
+		return &expired
+	}
+	return state
+}
+
 // ---------- 拼链 ----------
 
 func BuildCAChain(dao *models.DB, certID string, includeRoot bool) (string, error) {
@@ -93,7 +111,7 @@ func FindRootCASvc(dao *models.DB, certID string) (*RootInfo, error) {
 	chain := make([]string, 0, 4)
 	var root *models.Certificate
 
-	for cur != nil {
+	for {
 		chain = append(chain, cur.CertID)
 		if cur.ParentID == nil {
 			root = cur
@@ -124,7 +142,7 @@ func FindRootCASvc(dao *models.DB, certID string) (*RootInfo, error) {
 		info.Serial = v.Serial
 		info.NotBefore = v.EffectiveTime
 		info.NotAfter = v.ExpirationTime
-		info.State = v.State
+		info.State = normalizeState(v.State, v.ExpirationTime)
 	}
 
 	return info, nil
@@ -138,7 +156,7 @@ func BuildRootPEM(dao *models.DB, certID string) (string, error) {
 	}
 
 	// 向上遍历，直到 parent_id == nil
-	for cur != nil {
+	for {
 		if cur.ParentID == nil {
 			v, err := dao.GetLatestVersion(cur.CertID)
 			if err != nil || v == nil {
@@ -179,7 +197,7 @@ func ListCertsByGenres(dao *models.DB, offset, limit int, count *int64, genres [
 			item.Serial = v.Serial
 			item.NotBefore = v.EffectiveTime
 			item.NotAfter = v.ExpirationTime
-			item.State = v.State
+			item.State = normalizeState(v.State, v.ExpirationTime)
 			if v.Cert != nil {
 				if cert, perr := parseCertPEM(*v.Cert); perr == nil {
 					spec := inferKeySpec(cert)
@@ -215,7 +233,7 @@ func ListCertVersionsSvc(dao *models.DB, certID string) ([]VersionItem, error) {
 			EffectiveTime:  v.EffectiveTime,
 			ExpirationTime: v.ExpirationTime,
 			RevocationTime: v.RevocationTime,
-			State:          v.State,
+			State:          normalizeState(v.State, v.ExpirationTime),
 		})
 	}
 	return items, nil
