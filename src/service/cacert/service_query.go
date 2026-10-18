@@ -7,18 +7,19 @@ import (
 
 // CertListItem 列表项 DTO
 type CertListItem struct {
-	CertID    string  `json:"certId"`
-	Title     *string `json:"title,omitempty"`
-	Subject   *string `json:"subject,omitempty"`
-	State     *string `json:"state,omitempty"`
-	ParentID  *string `json:"parentId,omitempty"`
-	Pathlev   int     `json:"pathlev"`
-	Genre     int     `json:"genre"`
-	HasKey    int8    `json:"hasKey"`
-	Revision  *int    `json:"revision,omitempty"`
-	Serial    *string `json:"serial,omitempty"`
-	NotBefore *int64  `json:"notBefore,omitempty"`
-	NotAfter  *int64  `json:"notAfter,omitempty"`
+	CertID    string   `json:"certId"`
+	Title     *string  `json:"title,omitempty"`
+	Subject   *string  `json:"subject,omitempty"`
+	State     *string  `json:"state,omitempty"`
+	ParentID  *string  `json:"parentId,omitempty"`
+	Pathlev   int      `json:"pathlev"`
+	Genre     int      `json:"genre"`
+	HasKey    int8     `json:"hasKey"`
+	Revision  *int     `json:"revision,omitempty"`
+	Serial    *string  `json:"serial,omitempty"`
+	NotBefore *int64   `json:"notBefore,omitempty"`
+	NotAfter  *int64   `json:"notAfter,omitempty"`
+	Key       *KeySpec `json:"key,omitempty"`
 }
 
 // VersionItem 版本列表项 DTO
@@ -179,6 +180,12 @@ func ListCertsByGenres(dao *models.DB, offset, limit int, count *int64, genres [
 			item.NotBefore = v.EffectiveTime
 			item.NotAfter = v.ExpirationTime
 			item.State = v.State
+			if v.Cert != nil {
+				if cert, perr := parseCertPEM(*v.Cert); perr == nil {
+					spec := inferKeySpec(cert)
+					item.Key = &spec
+				}
+			}
 		}
 		items = append(items, item)
 	}

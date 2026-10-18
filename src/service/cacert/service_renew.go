@@ -216,7 +216,7 @@ func inferKeySpec(cert *x509.Certificate) KeySpec {
 	case ed25519.PublicKey:
 		return KeySpec{Algo: "ed25519", Size: 0}
 	default:
-		return KeySpec{Algo: "ecdsa", Size: 256}
+		return KeySpec{Algo: "unknown", Size: 0}
 	}
 }
 
