@@ -318,7 +318,7 @@ func signCert(subjectKey any, parentCert *x509.Certificate, parentSigner crypto.
 	tpl := x509.Certificate{
 		SerialNumber:          serial,
 		Subject:               subject,
-		NotBefore:             now.Add(-5 * time.Minute),
+		NotBefore:             now,
 		NotAfter:              cfg.Expiry.NotAfter(now),
 		KeyUsage:              ku,
 		ExtKeyUsage:           eku,
