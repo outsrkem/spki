@@ -31,7 +31,9 @@ func AppRoute(h *server.Hertz) {
 	h.HEAD("")              // 健康检查
 	h.GET("", helloWorld()) // 健康检查
 
-	// OCSP）
+	// OCSP
+	// 签发证书时写入 OCSP URL
+	// cfg.OCSPServer = []string{"http://pki.example.com/spki/ocsp"}
 	h.POST("/spki/ocsp", cacert.OCSPResponder())
 	h.GET("/spki/ocsp", cacert.OCSPResponder())
 
