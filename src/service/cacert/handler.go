@@ -124,19 +124,45 @@ func IssueEndEntity() app.HandlerFunc {
 // ---------- 吊销 ----------
 
 // RevokeCert POST /spki/cert/:id/revoke
+// 请求体：{"reason": "keyCompromise"}，reason 可选，不传默认 unspecified
 func RevokeCert() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		certID := c.Param("id")
+
+		var req struct {
+			Reason string `json:"reason"` // 语义化 key，如 "keyCompromise"
+		}
+		// Body 可为空，BindJSON 失败也允许（走默认 unspecified）
+		_ = c.BindJSON(&req)
+
+		reason := models.ReasonUnspecified
+		if req.Reason != "" {
+			code, ok := ParseRevocationReason(req.Reason)
+			if !ok {
+				c.JSON(http.StatusBadRequest, answer.ResBody("444", "invalid revocation reason: "+req.Reason, ""))
+				return
+			}
+			reason = code
+		}
+
 		dao, ok := mustDao(c)
 		if !ok {
 			return
 		}
-		if err := RevokeCertSvc(dao, certID); err != nil {
+		if err := RevokeCertSvc(dao, certID, reason); err != nil {
 			hlog.Error("RevokeCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
 		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{"certId": certID, "status": "R"}))
+
+		// 回显：同时给出 key 和数字码，方便前端和机器各自取用
+		reasonName := RevocationReasonName[reason]
+		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"certId": certID,
+			"status": "R",
+			"reason": reasonName,
+			"code":   reason,
+		}))
 	}
 }
 

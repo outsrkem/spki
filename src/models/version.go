@@ -18,10 +18,36 @@ type Version struct {
 	EffectiveTime  *int64  `gorm:"column:effective_time"`
 	ExpirationTime *int64  `gorm:"column:expiration_time"`
 	RevocationTime *int64  `gorm:"column:revocation_time"`
+	RevocationCode *int8   `gorm:"column:revocation_code"`
 	State          *string `gorm:"column:state"`
 }
 
 func (Version) TableName() string { return "pki_version" }
+
+const (
+	ReasonUnspecified          int8 = 0
+	ReasonKeyCompromise        int8 = 1
+	ReasonCACompromise         int8 = 2
+	ReasonAffiliationChanged   int8 = 3
+	ReasonSuperseded           int8 = 4
+	ReasonCessationOfOperation int8 = 5
+	ReasonCertificateHold      int8 = 6 // 若不支持 hold，可不开放
+	ReasonRemoveFromCRL        int8 = 8 // 与 6 配对，若不支持可不开放
+	ReasonPrivilegeWithdrawn   int8 = 9
+	ReasonAACompromise         int8 = 10
+)
+
+// IsValidRevocationCode 校验原因码是否合法（7 号保留不用）
+func IsValidRevocationCode(c int8) bool {
+	switch c {
+	case ReasonUnspecified, ReasonKeyCompromise, ReasonCACompromise,
+		ReasonAffiliationChanged, ReasonSuperseded, ReasonCessationOfOperation,
+		ReasonCertificateHold, ReasonRemoveFromCRL,
+		ReasonPrivilegeWithdrawn, ReasonAACompromise:
+		return true
+	}
+	return false
+}
 
 func (d *DB) GetLatestVersion(certID string) (*Version, error) {
 	var v Version

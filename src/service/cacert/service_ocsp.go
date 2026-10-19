@@ -30,6 +30,8 @@ func OCSPResponderSvc(dao *models.DB, reqDER []byte) ([]byte, error) {
 	// 3. 查吊销状态：用 issuer 的 certid，不是 serial
 	status := ocsp.Good
 	var revokedAt time.Time
+	reasonCode := ocsp.Unspecified // 默认 0，与 RFC 5280 unspecified 一致
+
 	revoked, err := dao.ListRevokedByIssuerBySerial(issuerID, req.SerialNumber.Text(16))
 	if err != nil {
 		return nil, fmt.Errorf("query revocation: %w", err)
@@ -37,6 +39,9 @@ func OCSPResponderSvc(dao *models.DB, reqDER []byte) ([]byte, error) {
 	if revoked != nil && revoked.RevocationTime != nil {
 		status = ocsp.Revoked
 		revokedAt = time.UnixMilli(*revoked.RevocationTime)
+		if revoked.RevocationCode != nil {
+			reasonCode = int(*revoked.RevocationCode)
+		}
 	}
 
 	// 4. 构造响应模板
@@ -49,7 +54,7 @@ func OCSPResponderSvc(dao *models.DB, reqDER []byte) ([]byte, error) {
 	}
 	if status == ocsp.Revoked {
 		tpl.RevokedAt = revokedAt
-		tpl.RevocationReason = ocsp.Unspecified
+		tpl.RevocationReason = reasonCode
 	}
 
 	// 5. 用 issuer 证书 + 私钥签名（RFC 6960 允许 issuer 直接签）
