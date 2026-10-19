@@ -434,8 +434,6 @@ func ImportCA() app.HandlerFunc {
 	}
 }
 
-// ---------- OCSP ----------
-
 // OCSPResponder POST /spki/ocsp
 // 接收 DER 编码的 OCSPRequest，返回 DER 编码的 OCSPResponse
 func OCSPResponder() app.HandlerFunc {
@@ -455,7 +453,6 @@ func OCSPResponder() app.HandlerFunc {
 		respDER, err := OCSPResponderSvc(dao, reqDER)
 		if err != nil {
 			hlog.Error("OCSPResponder: ", err)
-			// OCSP 协议要求错误也用 OCSPResponse 返回，这里简化返回 500
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
 		}

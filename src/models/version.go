@@ -60,7 +60,7 @@ func (d *DB) GetCertificateBySerial(serial string) (*Certificate, error) {
 		return nil, nil
 	}
 	var cert Certificate
-	err = d.db.Where("cert_id = ?", *v.CertID).First(&cert).Error
+	err = d.db.Where("certid = ?", *v.CertID).First(&cert).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -73,13 +73,14 @@ func (d *DB) GetCertificateBySerial(serial string) (*Certificate, error) {
 const StateRevoked = "R"
 
 // ListRevokedByIssuerBySerial 查某个 issuer 下、指定 serial 的吊销记录
+// issuerID 必须是 certid（对应 pki_certificate.parent_id）
 // 返回最新的 version 记录（含 RevocationTime），未吊销返回 nil, nil
 func (d *DB) ListRevokedByIssuerBySerial(issuerID, serial string) (*Version, error) {
 	// 先找 issuer 下的所有直接子证书
 	var certIDs []string
 	err := d.db.Model(&Certificate{}).
 		Where("parent_id = ?", issuerID).
-		Pluck("cert_id", &certIDs).Error
+		Pluck("certid", &certIDs).Error
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +89,7 @@ func (d *DB) ListRevokedByIssuerBySerial(issuerID, serial string) (*Version, err
 	}
 
 	var v Version
-	err = d.db.Where("cert_id IN ? AND serial = ? AND state = ?", certIDs, serial, StateRevoked).
+	err = d.db.Where("certid IN ? AND serial = ? AND state = ?", certIDs, serial, StateRevoked).
 		Order("revision DESC").
 		First(&v).Error
 	if err != nil {

@@ -19,11 +19,8 @@ import (
 	"math/big"
 	"net"
 	"net/url"
-	"spki/src/models"
 	"strings"
 	"time"
-
-	"golang.org/x/crypto/ocsp"
 )
 
 // ---------- 私钥 ----------
@@ -580,97 +577,6 @@ func calcPubKeyFingerprint(signer crypto.Signer) (string, error) {
 	}
 	sum := sha256.Sum256(der)
 	return fmt.Sprintf("%x", sum[:]), nil
-}
-
-// OCSPResponderSvc 处理一次 OCSP 请求
-// reqDER 是 DER 编码的 OCSPRequest
-// 返回 DER 编码的 OCSPResponse
-func OCSPResponderSvc(dao *models.DB, reqDER []byte) ([]byte, error) {
-	// 1. 解析 OCSP 请求
-	req, err := ocsp.ParseRequest(reqDER)
-	if err != nil {
-		return nil, fmt.Errorf("parse ocsp request: %w", err)
-	}
-
-	// 2. 找到签发该证书的 issuer
-	//    优先用请求里的 IssuerNameHash/IssuerKeyHash 匹配，简单起见用 Serial 反查
-	//    这里通过 serial 找到证书记录，再拿它的 parent 作为 issuer
-	issuerCert, issuerSigner, err := findIssuerForOCSP(dao, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// 3. 查吊销状态
-	status := ocsp.Good
-	var revokedAt time.Time
-	revoked, err := dao.ListRevokedByIssuerBySerial(issuerSerial(issuerCert), req.SerialNumber.Text(16))
-	if err != nil {
-		return nil, fmt.Errorf("query revocation: %w", err)
-	}
-	if revoked != nil && revoked.RevocationTime != nil {
-		status = ocsp.Revoked
-		revokedAt = time.UnixMilli(*revoked.RevocationTime)
-	}
-
-	// 4. 构造响应模板
-	now := time.Now()
-	tpl := &ocsp.Response{
-		Status:       status,
-		SerialNumber: req.SerialNumber,
-		ThisUpdate:   now,
-		NextUpdate:   now.Add(24 * time.Hour), // 缓存 24h
-	}
-	if status == ocsp.Revoked {
-		tpl.RevokedAt = revokedAt
-		tpl.RevocationReason = ocsp.Unspecified
-	}
-
-	// 5. 用 issuer 证书 + 私钥签名（RFC 6960 允许 issuer 直接签）
-	respDER, err := ocsp.CreateResponse(issuerCert, issuerCert, *tpl, issuerSigner)
-	if err != nil {
-		return nil, fmt.Errorf("create ocsp response: %w", err)
-	}
-	return respDER, nil
-}
-
-// findIssuerForOCSP 根据 OCSP 请求找到对应的 issuer 证书和签名私钥
-// 用 IssuerNameHash / IssuerKeyHash 匹配更严谨，这里用 Serial 反查简化实现
-func findIssuerForOCSP(dao *models.DB, req *ocsp.Request) (*x509.Certificate, crypto.Signer, error) {
-	// 用 serial 找证书记录
-	certRec, err := dao.GetCertificateBySerial(req.SerialNumber.Text(16))
-	if err != nil || certRec == nil {
-		return nil, nil, errors.New("certificate not found for serial")
-	}
-
-	// 确定 issuer：末端/中间证书用 parent，根 CA 自签
-	var issuerID string
-	if certRec.ParentID != nil {
-		issuerID = *certRec.ParentID
-	} else {
-		issuerID = certRec.CertID
-	}
-
-	issuerVer, err := dao.GetLatestVersion(issuerID)
-	if err != nil || issuerVer == nil {
-		return nil, nil, errors.New("issuer version not found")
-	}
-	if issuerVer.KeyID == nil {
-		return nil, nil, errors.New("issuer CA has no private key")
-	}
-
-	issuerKeyRec, err := dao.GetPrivateKeyByKeyID(*issuerVer.KeyID)
-	if err != nil || issuerKeyRec == nil {
-		return nil, nil, errors.New("issuer key not found")
-	}
-	issuerCert, err := parseCertPEM(*issuerVer.Cert)
-	if err != nil {
-		return nil, nil, err
-	}
-	signer, err := decryptPrivateKey(issuerKeyRec.PrivateKey, issuerKeyRec.Passphrase)
-	if err != nil {
-		return nil, nil, err
-	}
-	return issuerCert, signer, nil
 }
 
 // issuerSerial 辅助：拿 issuer 的序列号字符串（若你的 DAO 需要）
