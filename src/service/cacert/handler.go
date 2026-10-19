@@ -209,7 +209,7 @@ func DownloadCRL() app.HandlerFunc {
 		}
 
 		// validFor 可选，默认 7d
-		validFor := c.DefaultQuery("validFor", "7d")
+		validFor := c.DefaultQuery("valid", "7d")
 
 		dao, ok := mustDao(c)
 		if !ok {
