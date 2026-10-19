@@ -199,7 +199,7 @@ func ExportCertChain() app.HandlerFunc {
 
 // ---------- CRL ----------
 
-// DownloadCRL GET /spki/crl?issuerId=xxx
+// DownloadCRL GET /spki/crl?issuerId=xxx&validFor=1m
 func DownloadCRL() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		issuerID := c.Query("issuerId")
@@ -207,15 +207,27 @@ func DownloadCRL() app.HandlerFunc {
 			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuerId is required", ""))
 			return
 		}
+
+		// validFor 可选，默认 7d
+		validFor := c.DefaultQuery("validFor", "7d")
+
 		dao, ok := mustDao(c)
 		if !ok {
 			return
 		}
-		crl, err := BuildCRL(dao, issuerID)
+
+		crl, err := BuildCRL(dao, issuerID, validFor)
 		if err != nil {
+			// 输入格式错误返回 400，其他返回 500
+			if isInvalidExpiryErr(err) {
+				c.JSON(http.StatusBadRequest, answer.ResBody("444", err.Error(), ""))
+				return
+			}
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
 		}
+
+		c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.crl.pem"`, issuerID))
 		c.Data(http.StatusOK, "application/x-pem-file", []byte(crl))
 	}
 }
