@@ -180,6 +180,7 @@ github.com/youmark/pkcs8
 golang.org/x/arch/x86/x86asm
 # golang.org/x/crypto v0.22.0
 ## explicit; go 1.18
+golang.org/x/crypto/ocsp
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/scrypt
 # golang.org/x/sys v0.24.0

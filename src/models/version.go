@@ -43,3 +43,59 @@ func (d *DB) ListVersionsByCertID(certID string) ([]Version, error) {
 		Find(&list).Error
 	return list, err
 }
+
+// GetCertificateBySerial 按序列号（hex 字符串）查证书记录
+// 注意：同一 serial 理论上只对应一张证书，但版本表里可能有多个 revision
+// 这里返回 certificate 主记录
+func (d *DB) GetCertificateBySerial(serial string) (*Certificate, error) {
+	var v Version
+	err := d.db.Where("serial = ?", serial).Order("revision DESC").First(&v).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if v.CertID == nil {
+		return nil, nil
+	}
+	var cert Certificate
+	err = d.db.Where("cert_id = ?", *v.CertID).First(&cert).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &cert, nil
+}
+
+const StateRevoked = "R"
+
+// ListRevokedByIssuerBySerial 查某个 issuer 下、指定 serial 的吊销记录
+// 返回最新的 version 记录（含 RevocationTime），未吊销返回 nil, nil
+func (d *DB) ListRevokedByIssuerBySerial(issuerID, serial string) (*Version, error) {
+	// 先找 issuer 下的所有直接子证书
+	var certIDs []string
+	err := d.db.Model(&Certificate{}).
+		Where("parent_id = ?", issuerID).
+		Pluck("cert_id", &certIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(certIDs) == 0 {
+		return nil, nil
+	}
+
+	var v Version
+	err = d.db.Where("cert_id IN ? AND serial = ? AND state = ?", certIDs, serial, StateRevoked).
+		Order("revision DESC").
+		First(&v).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &v, nil
+}

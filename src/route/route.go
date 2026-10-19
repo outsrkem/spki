@@ -31,6 +31,10 @@ func AppRoute(h *server.Hertz) {
 	h.HEAD("")              // 健康检查
 	h.GET("", helloWorld()) // 健康检查
 
+	// OCSP）
+	h.POST("/spki/ocsp", cacert.OCSPResponder())
+	h.GET("/spki/ocsp", cacert.OCSPResponder())
+
 	// CA
 	h.POST("/v1/spki/ca/init", apc("spki:ca:init"), cacert.InitCa())                     // 初始化根 CA
 	h.POST("/v1/spki/ca/intermediate", apc("spki:ca:issue"), cacert.IssueIntermediate()) // 签发中间 CA

@@ -421,3 +421,33 @@ func ImportCA() app.HandlerFunc {
 		c.JSON(http.StatusCreated, answer.ResBody("200", "", resp))
 	}
 }
+
+// ---------- OCSP ----------
+
+// OCSPResponder POST /spki/ocsp
+// 接收 DER 编码的 OCSPRequest，返回 DER 编码的 OCSPResponse
+func OCSPResponder() app.HandlerFunc {
+	return func(ctx context.Context, c *app.RequestContext) {
+		// OCSP 请求是二进制，直接用 Body()
+		reqDER := c.Request.Body()
+		if len(reqDER) == 0 {
+			c.JSON(http.StatusBadRequest, answer.ResBody("444", "empty ocsp request", ""))
+			return
+		}
+
+		dao, ok := mustDao(c)
+		if !ok {
+			return
+		}
+
+		respDER, err := OCSPResponderSvc(dao, reqDER)
+		if err != nil {
+			hlog.Error("OCSPResponder: ", err)
+			// OCSP 协议要求错误也用 OCSPResponse 返回，这里简化返回 500
+			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			return
+		}
+
+		c.Data(http.StatusOK, "application/ocsp-response", respDER)
+	}
+}
