@@ -171,3 +171,36 @@ func ParseExpiry(s string) (Expiry, error) {
 func (e Expiry) NotAfter(from time.Time) time.Time {
 	return from.AddDate(e.Years, e.Months, e.Days)
 }
+
+// 原因码 key → 数值
+var RevocationReasonMap = map[string]int8{
+	"unspecified":          models.ReasonUnspecified,
+	"keyCompromise":        models.ReasonKeyCompromise,
+	"cACompromise":         models.ReasonCACompromise,
+	"affiliationChanged":   models.ReasonAffiliationChanged,
+	"superseded":           models.ReasonSuperseded,
+	"cessationOfOperation": models.ReasonCessationOfOperation,
+	"certificateHold":      models.ReasonCertificateHold,
+	"removeFromCRL":        models.ReasonRemoveFromCRL,
+	"privilegeWithdrawn":   models.ReasonPrivilegeWithdrawn,
+	"aACompromise":         models.ReasonAACompromise,
+}
+
+// 反向：数值 → key（用于查询接口回显）
+var RevocationReasonName = map[int8]string{
+	models.ReasonUnspecified:          "unspecified",
+	models.ReasonKeyCompromise:        "keyCompromise",
+	models.ReasonCACompromise:         "cACompromise",
+	models.ReasonAffiliationChanged:   "affiliationChanged",
+	models.ReasonSuperseded:           "superseded",
+	models.ReasonCessationOfOperation: "cessationOfOperation",
+	models.ReasonCertificateHold:      "certificateHold",
+	models.ReasonRemoveFromCRL:        "removeFromCRL",
+	models.ReasonPrivilegeWithdrawn:   "privilegeWithdrawn",
+	models.ReasonAACompromise:         "aACompromise",
+}
+
+func ParseRevocationReason(s string) (int8, bool) {
+	code, ok := RevocationReasonMap[s]
+	return code, ok
+}

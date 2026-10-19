@@ -34,7 +34,8 @@ func AppRoute(h *server.Hertz) {
 	// OCSP
 	// 签发证书时写入 OCSP URL
 	// cfg.OCSPServer = []string{"http://pki.example.com/spki/ocsp"}
-	h.POST("/spki/ocsp", cacert.OCSPResponder())
+	//TODO 需要取消鉴权
+	h.POST("/spki/ocsp", apc("spki:cert:list"), cacert.OCSPResponder())
 	h.GET("/spki/ocsp", cacert.OCSPResponder())
 
 	// CA

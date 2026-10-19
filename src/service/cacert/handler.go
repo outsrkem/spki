@@ -24,6 +24,14 @@ func mustDao(c *app.RequestContext) (*models.DB, bool) {
 	return dao, true
 }
 
+// svc 返回的消息类容
+type HandlerInfo struct {
+	HttpCode int
+	Errcode  string
+	Message  any
+	Payload  any
+}
+
 // ---------- 初始化根 CA ----------
 
 // InitCa POST /spki/ca/init
@@ -124,19 +132,48 @@ func IssueEndEntity() app.HandlerFunc {
 // ---------- 吊销 ----------
 
 // RevokeCert POST /spki/cert/:id/revoke
+// 请求体：{"reason": "keyCompromise"}，reason 可选，不传默认 unspecified
 func RevokeCert() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		certID := c.Param("id")
+
+		var req struct {
+			Reason string `json:"reason"` // 语义化 key，如 "keyCompromise"
+		}
+		// Body 可为空，BindJSON 失败也允许（走默认 unspecified）
+		_ = c.BindJSON(&req)
+
+		reason := models.ReasonUnspecified
+		if req.Reason != "" {
+			code, ok := ParseRevocationReason(req.Reason)
+			if !ok {
+				c.JSON(http.StatusBadRequest, answer.ResBody("444", "invalid revocation reason: "+req.Reason, ""))
+				return
+			}
+			reason = code
+		}
+
 		dao, ok := mustDao(c)
 		if !ok {
 			return
 		}
-		if err := RevokeCertSvc(dao, certID); err != nil {
+		if err := RevokeCertSvc(dao, certID, reason); err != nil {
 			hlog.Error("RevokeCert: ", err)
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
 		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{"certId": certID, "status": "R"}))
+
+		// 回显：同时给出 key 和数字码，方便前端和机器各自取用
+		reasonName := RevocationReasonName[reason]
+		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"cert": map[string]string{
+				"id": certID,
+			},
+			"certId": certID,
+			"status": "R",
+			"reason": reasonName,
+			"code":   reason,
+		}))
 	}
 }
 
@@ -209,7 +246,7 @@ func DownloadCRL() app.HandlerFunc {
 		}
 
 		// validFor 可选，默认 7d
-		validFor := c.DefaultQuery("validFor", "7d")
+		validFor := c.DefaultQuery("valid", "7d")
 
 		dao, ok := mustDao(c)
 		if !ok {
@@ -434,8 +471,6 @@ func ImportCA() app.HandlerFunc {
 	}
 }
 
-// ---------- OCSP ----------
-
 // OCSPResponder POST /spki/ocsp
 // 接收 DER 编码的 OCSPRequest，返回 DER 编码的 OCSPResponse
 func OCSPResponder() app.HandlerFunc {
@@ -455,7 +490,6 @@ func OCSPResponder() app.HandlerFunc {
 		respDER, err := OCSPResponderSvc(dao, reqDER)
 		if err != nil {
 			hlog.Error("OCSPResponder: ", err)
-			// OCSP 协议要求错误也用 OCSPResponse 返回，这里简化返回 500
 			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 			return
 		}

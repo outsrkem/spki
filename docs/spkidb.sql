@@ -84,6 +84,7 @@ CREATE TABLE `pki_version`  (
   `effective_time` bigint(20) NULL DEFAULT NULL COMMENT '生效时间戳（毫秒）',
   `expiration_time` bigint(20) NULL DEFAULT NULL COMMENT '到期时间戳（毫秒）',
   `revocation_time` bigint(20) NULL DEFAULT NULL COMMENT '吊销时间戳（毫秒）',
+  `revocation_code` tinyint(4) DEFAULT NULL COMMENT '吊销原因码，RFC 5280 CRLReason，仅 state=R 时有值',
   `state` char(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT 'V' COMMENT 'V有效 R吊销 E过期',
   PRIMARY KEY (`kid`) USING BTREE,
   UNIQUE INDEX `uk_cert_fingerprint`(`fingerprint`) USING BTREE,

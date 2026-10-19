@@ -32,6 +32,7 @@ type VersionItem struct {
 	EffectiveTime  *int64  `json:"effectiveTime"`
 	ExpirationTime *int64  `json:"expirationTime"`
 	RevocationTime *int64  `json:"revocationTime,omitempty"`
+	RevocationCode *int8   `json:"revocationCode,omitempty"`
 	State          *string `json:"state"`
 }
 
@@ -233,6 +234,7 @@ func ListCertVersionsSvc(dao *models.DB, certID string) ([]VersionItem, error) {
 			EffectiveTime:  v.EffectiveTime,
 			ExpirationTime: v.ExpirationTime,
 			RevocationTime: v.RevocationTime,
+			RevocationCode: v.RevocationCode,
 			State:          normalizeState(v.State, v.ExpirationTime),
 		})
 	}

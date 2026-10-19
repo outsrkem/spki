@@ -16,13 +16,16 @@ import (
 
 // ---------- 吊销 ----------
 
-func RevokeCertSvc(dao *models.DB, certID string) error {
+func RevokeCertSvc(dao *models.DB, certID string, reason int8) error {
+	if !models.IsValidRevocationCode(reason) {
+		return errors.New("invalid revocation code")
+	}
 	cert, err := dao.GetCertificateByCertID(certID)
 	if err != nil || cert == nil {
 		return errors.New("certificate not found")
 	}
 	now := nowMillis()
-	return dao.RevokeCertTx(certID, StateRevoked, now)
+	return dao.RevokeCertTx(certID, StateRevoked, now, reason)
 }
 
 // ---------- 删除 ----------
@@ -166,10 +169,15 @@ func BuildCRL(dao *models.DB, issuerID string, validFor string) (string, error) 
 		if _, ok := serial.SetString(*v.Serial, 16); !ok {
 			continue
 		}
-		entries = append(entries, x509.RevocationListEntry{
+		entry := x509.RevocationListEntry{
 			SerialNumber:   serial,
 			RevocationTime: time.UnixMilli(*v.RevocationTime),
-		})
+		}
+		// 0 或 nil 不写 reasonCode（符合 RFC 5280）
+		if v.RevocationCode != nil && *v.RevocationCode != models.ReasonUnspecified {
+			entry.ReasonCode = int(*v.RevocationCode)
+		}
+		entries = append(entries, entry)
 	}
 
 	template := &x509.RevocationList{

@@ -34,16 +34,18 @@ func (d *DB) SaveCertBundle(cert Certificate, key *PrivateKey, version Version) 
 }
 
 // RevokeCertTx 事务吊销：只更新 version
-func (d *DB) RevokeCertTx(certID string, state string, revocationTime int64) error {
+func (d *DB) RevokeCertTx(certID string, state string, revocationTime int64, revocationCode int8) error {
+	if !IsValidRevocationCode(revocationCode) {
+		return errors.New("invalid revocation code")
+	}
 	return d.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&Version{}).
-			Where("instance_id = ? AND certid = ?", d.instanceId, certID).
-			Update("state", state).Error; err != nil {
-			return err
-		}
 		return tx.Model(&Version{}).
 			Where("instance_id = ? AND certid = ?", d.instanceId, certID).
-			Update("revocation_time", revocationTime).Error
+			Updates(map[string]any{
+				"state":           state,
+				"revocation_time": revocationTime,
+				"revocation_code": revocationCode,
+			}).Error
 	})
 }
 
