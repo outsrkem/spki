@@ -2,6 +2,7 @@ package cacert
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -24,12 +25,15 @@ func mustDao(c *app.RequestContext) (*models.DB, bool) {
 	return dao, true
 }
 
-// svc 返回的消息类容
-type HandlerInfo struct {
-	HttpCode int
-	Errcode  string
-	Message  any
-	Payload  any
+// writeErr 统一把 Svc 错误映射成 HTTP 响应
+func writeErr(c *app.RequestContext, err error) {
+	var se *SvcError
+	if errors.As(err, &se) {
+		c.JSON(se.HttpCode, answer.ResBody(se.Ecode, se.Msg, ""))
+		return
+	}
+	hlog.Error("unclassified svc error: ", err)
+	c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
 }
 
 // ---------- 初始化根 CA ----------
@@ -51,11 +55,10 @@ func InitCa() app.HandlerFunc {
 
 		certID, err := InitRootCA(dao, &cfg)
 		if err != nil {
-			hlog.Error("InitCa: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusCreated, answer.ResBody("200", "", map[string]any{"certId": certID}))
+		c.JSON(http.StatusCreated, answer.ResBody(answer.EcodeOK, "", map[string]any{"certId": certID}))
 	}
 }
 
@@ -86,11 +89,10 @@ func IssueIntermediate() app.HandlerFunc {
 
 		certID, err := IssueIntermediateSvc(dao, req.Issuer.ID, &req.CertConfig)
 		if err != nil {
-			hlog.Error("IssueIntermediate: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusCreated, answer.ResBody("200", "", map[string]any{"certId": certID}))
+		c.JSON(http.StatusCreated, answer.ResBody(answer.EcodeOK, "", map[string]any{"certId": certID}))
 	}
 }
 
@@ -121,11 +123,10 @@ func IssueEndEntity() app.HandlerFunc {
 
 		certID, err := IssueEndEntitySvc(dao, req.Issuer.ID, &req.CertConfig)
 		if err != nil {
-			hlog.Error("IssueEndEntity: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusCreated, answer.ResBody("200", "", map[string]any{"certId": certID}))
+		c.JSON(http.StatusCreated, answer.ResBody(answer.EcodeOK, "nil", map[string]any{"certId": certID}))
 	}
 }
 
