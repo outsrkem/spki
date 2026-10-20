@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"regexp"
 	"spki/src/models"
+	"spki/src/pkg/answer"
 	"strconv"
 	"strings"
 	"time"
@@ -18,34 +19,40 @@ import (
 
 func RevokeCertSvc(dao *models.DB, certID string, reason int8) error {
 	if !models.IsValidRevocationCode(reason) {
-		return errors.New("invalid revocation code")
+		return ErrBadRequest(answer.EcodeInvalidRevocationReason, "invalid revocation code", nil)
 	}
 	cert, err := dao.GetCertificateByCertID(certID)
-	if err != nil || cert == nil {
-		return errors.New("certificate not found")
+	if err != nil {
+		return ErrInternal(answer.EcodeError, "query cert failed", err)
+	}
+	if cert == nil {
+		return ErrNotFound(answer.EcodeCertificate404, "certificate not found", nil)
+	}
+	if v, err := dao.GetLatestVersion(certID); err == nil && v != nil &&
+		v.State != nil && *v.State == models.StateRevoked {
+		return nil
 	}
 	now := nowMillis()
-	return dao.RevokeCertTx(certID, StateRevoked, now, reason)
+	if err := dao.RevokeCertTx(certID, StateRevoked, now, reason); err != nil {
+		return ErrInternal(answer.EcodeError, "revoke cert failed", err)
+	}
+	return nil
 }
 
 // ---------- 删除 ----------
 
+// DeleteCertSvc 删除证书
 func DeleteCertSvc(dao *models.DB, certID string) error {
-	return dao.DeleteCertTx(certID)
+	if err := dao.DeleteCertTx(certID); err != nil {
+		if errors.Is(err, models.ErrHasChildren) {
+			return ErrConflict(answer.EcodeDeleteResourceConflict, "CA has sub-certificates, cannot delete", err)
+		}
+		return ErrInternal(answer.EcodeError, "delete cert failed", err)
+	}
+	return nil
 }
 
 // ---------- CRL ----------
-
-// isInvalidExpiryErr 判断是否为有效期格式错误（用于返回 400）。
-func isInvalidExpiryErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "invalid expiry") ||
-		strings.Contains(msg, "empty expiry") ||
-		strings.Contains(msg, "unsupported unit")
-}
 
 // parseExpiry 解析 "1d" / "1m" / "1y" 形式的有效期，返回 NextUpdate 时间。
 //   - d: 自然日
@@ -126,38 +133,47 @@ func BuildCRL(dao *models.DB, issuerID string, validFor string) (string, error) 
 	now := time.Now()
 	nextUpdate, err := parseExpiry(now, validFor)
 	if err != nil {
-		return "", err
+		return "", ErrBadRequest(answer.EcodeInvalidExpiry, "invalid validFor", err)
 	}
 
 	issuer, err := dao.GetCertificateByCertID(issuerID)
-	if err != nil || issuer == nil {
-		return "", errors.New("issuer not found")
+	if err != nil {
+		return "", ErrInternal(answer.EcodeError, "query issuer failed", err)
+	}
+	if issuer == nil {
+		return "", ErrNotFound(answer.EcodeIssuer404, "issuer not found", nil)
 	}
 	issuerVer, err := dao.GetLatestVersion(issuerID)
-	if err != nil || issuerVer == nil {
-		return "", errors.New("issuer version not found")
+	if err != nil {
+		return "", ErrInternal(answer.EcodeError, "query issuer version failed", err)
+	}
+	if issuerVer == nil {
+		return "", ErrNotFound(answer.EcodeVersion404, "issuer version not found", nil)
 	}
 
 	if issuerVer.KeyID == nil {
-		return "", errors.New("issuer CA has no private key, cannot sign CRL")
+		return "", ErrBadRequest(answer.EcodeCACannotSign, "issuer CA has no private key, cannot sign CRL", nil)
 	}
 
 	issuerKeyRec, err := dao.GetPrivateKeyByKeyID(*issuerVer.KeyID)
-	if err != nil || issuerKeyRec == nil {
-		return "", errors.New("issuer key not found")
+	if err != nil {
+		return "", ErrInternal(answer.EcodeError, "query issuer key failed", err)
+	}
+	if issuerKeyRec == nil {
+		return "", ErrNotFound(answer.EcodePrivateKey404, "issuer key not found", nil)
 	}
 	issuerCert, err := parseCertPEM(*issuerVer.Cert)
 	if err != nil {
-		return "", err
+		return "", ErrInternal(answer.EcodeError, "parse issuer cert failed", err)
 	}
 	signer, err := decryptPrivateKey(issuerKeyRec.PrivateKey, issuerKeyRec.Passphrase)
 	if err != nil {
-		return "", err
+		return "", ErrInternal(answer.EcodeError, "decrypt issuer key failed", err)
 	}
 
 	revoked, err := dao.ListRevokedByIssuer(issuerID)
 	if err != nil {
-		return "", err
+		return "", ErrInternal(answer.EcodeError, "list revoked failed", err)
 	}
 
 	var entries []x509.RevocationListEntry
@@ -189,7 +205,7 @@ func BuildCRL(dao *models.DB, issuerID string, validFor string) (string, error) 
 
 	der, err := x509.CreateRevocationList(rand.Reader, template, issuerCert, signer)
 	if err != nil {
-		return "", err
+		return "", ErrInternal(answer.EcodeError, "create CRL failed", err)
 	}
 	return string(pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: der})), nil
 }

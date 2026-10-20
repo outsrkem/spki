@@ -5,9 +5,9 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"spki/src/models"
+	"spki/src/pkg/answer"
 	"strings"
 	"time"
 )
@@ -21,14 +21,17 @@ import (
 //	    └── {CN}_{YYYYMMDD}_{UnixMilli}.key
 func GetCertZip(dao *models.DB, certID string) ([]byte, string, error) {
 	v, err := dao.GetLatestVersion(certID)
-	if err != nil || v == nil {
-		return nil, "", errors.New("version not found")
+	if err != nil {
+		return nil, "", ErrInternal(answer.EcodeError, "query version failed", err)
+	}
+	if v == nil {
+		return nil, "", ErrNotFound(answer.EcodeVersion404, "version not found", nil)
 	}
 
 	// 1. 解析证书，拿 CN
 	cert, err := parseCertPEM(*v.Cert)
 	if err != nil {
-		return nil, "", fmt.Errorf("parse cert: %w", err)
+		return nil, "", ErrInternal(answer.EcodeError, "parse cert failed", err)
 	}
 	cn := cert.Subject.CommonName
 	if cn == "" {
@@ -42,7 +45,13 @@ func GetCertZip(dao *models.DB, certID string) ([]byte, string, error) {
 	ts := now.UnixMilli()
 	name := fmt.Sprintf("%s_%s_%d", cn, dateStr, ts)
 
-	// 3. 私钥 PEM
+	// 3. 完整证书链 PEM（末端 + 中间 + 根）
+	chainPEM, err := BuildCertChain(dao, certID, true)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// 4. 私钥 PEM
 	var keyPEM string
 	if v.KeyID != nil {
 		keyRec, err := dao.GetPrivateKeyByKeyID(*v.KeyID)
@@ -60,32 +69,32 @@ func GetCertZip(dao *models.DB, certID string) ([]byte, string, error) {
 		}
 	}
 
-	// 4. 打 ZIP
+	// 5. 打 ZIP
 	buf := new(bytes.Buffer)
 	zw := zip.NewWriter(buf)
 
 	certPath := name + "/" + name + ".pem"
 	f, err := zw.Create(certPath)
 	if err != nil {
-		return nil, "", fmt.Errorf("zip create cert: %w", err)
+		return nil, "", ErrInternal(answer.EcodeError, "zip create cert failed", err)
 	}
-	if _, err := f.Write([]byte(*v.Cert)); err != nil {
-		return nil, "", fmt.Errorf("zip write cert: %w", err)
+	if _, err := f.Write([]byte(chainPEM)); err != nil {
+		return nil, "", ErrInternal(answer.EcodeError, "zip write cert failed", err)
 	}
 
 	if keyPEM != "" {
 		keyPath := name + "/" + name + ".key"
 		f, err := zw.Create(keyPath)
 		if err != nil {
-			return nil, "", fmt.Errorf("zip create key: %w", err)
+			return nil, "", ErrInternal(answer.EcodeError, "zip create key failed", err)
 		}
 		if _, err := f.Write([]byte(keyPEM)); err != nil {
-			return nil, "", fmt.Errorf("zip write key: %w", err)
+			return nil, "", ErrInternal(answer.EcodeError, "zip write key failed", err)
 		}
 	}
 
 	if err := zw.Close(); err != nil {
-		return nil, "", fmt.Errorf("zip close: %w", err)
+		return nil, "", ErrInternal(answer.EcodeError, "zip close failed", err)
 	}
 
 	zipName := name + ".zip"

@@ -2,6 +2,7 @@ package models
 
 import (
 	"errors"
+	"fmt"
 
 	"gorm.io/gorm"
 )
@@ -11,6 +12,8 @@ const (
 	GenreInter = 2
 	GenreLeaf  = 3
 )
+
+var ErrHasChildren = errors.New("certificate has sub-certificates")
 
 // ---------- 事务版：SaveCertBundle ----------
 
@@ -33,7 +36,7 @@ func (d *DB) SaveCertBundle(cert Certificate, key *PrivateKey, version Version) 
 	})
 }
 
-// RevokeCertTx 事务吊销：只更新 version
+// RevokeCertTx 事务吊销：只更新未吊销的 version
 func (d *DB) RevokeCertTx(certID string, state string, revocationTime int64, revocationCode int8) error {
 	if !IsValidRevocationCode(revocationCode) {
 		return errors.New("invalid revocation code")
@@ -41,6 +44,7 @@ func (d *DB) RevokeCertTx(certID string, state string, revocationTime int64, rev
 	return d.db.Transaction(func(tx *gorm.DB) error {
 		return tx.Model(&Version{}).
 			Where("instance_id = ? AND certid = ?", d.instanceId, certID).
+			Where("state IS NULL OR state != ?", StateRevoked).
 			Updates(map[string]any{
 				"state":           state,
 				"revocation_time": revocationTime,
@@ -50,21 +54,40 @@ func (d *DB) RevokeCertTx(certID string, state string, revocationTime int64, rev
 }
 
 // DeleteCertTx 事务删除
+// FIX: 删除前检查是否有子证书，有则拒绝删除，避免产生孤儿证书
 func (d *DB) DeleteCertTx(certID string) error {
 	return d.db.Transaction(func(tx *gorm.DB) error {
+		// 1. 检查是否有子证书
+		var childCnt int64
+		if err := tx.Model(&Certificate{}).
+			Where("instance_id = ? AND parent_id = ?", d.instanceId, certID).
+			Count(&childCnt).Error; err != nil {
+			return err
+		}
+		if childCnt > 0 {
+			return fmt.Errorf("%w: %d sub-certificate(s) exist", ErrHasChildren, childCnt)
+		}
+
+		// 2. 查该 certID 的所有 version（用于后续清理 key）
 		var versions []Version
 		if err := tx.Where("instance_id = ? AND certid = ?", d.instanceId, certID).
 			Find(&versions).Error; err != nil {
 			return err
 		}
+
+		// 3. 删 version
 		if err := tx.Where("instance_id = ? AND certid = ?", d.instanceId, certID).
 			Delete(&Version{}).Error; err != nil {
 			return err
 		}
+
+		// 4. 删 certificate
 		if err := tx.Where("instance_id = ? AND certid = ?", d.instanceId, certID).
 			Delete(&Certificate{}).Error; err != nil {
 			return err
 		}
+
+		// 5. 清理不再被引用的 private_key
 		for _, v := range versions {
 			if v.KeyID == nil {
 				continue
@@ -86,15 +109,24 @@ func (d *DB) DeleteCertTx(certID string) error {
 	})
 }
 
-// ListRevokedByIssuer 查出某 CA 下所有已吊销的末端证书版本
+// ListRevokedByIssuer 查出某 CA 下所有已吊销的子证书版本
 func (d *DB) ListRevokedByIssuer(issuerID string) ([]Version, error) {
+	var certIDs []string
+	err := d.WithInstance().
+		Model(&Certificate{}).
+		Where("parent_id = ?", issuerID).
+		Pluck("certid", &certIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(certIDs) == 0 {
+		return nil, nil
+	}
+
 	var list []Version
-	err := d.db.
-		Table("pki_version").
-		Joins("JOIN pki_certificate ON pki_certificate.certid = pki_version.certid").
-		Where("pki_version.instance_id = ?", d.instanceId).
-		Where("pki_certificate.instance_id = ?", d.instanceId).
-		Where("pki_certificate.parent_id = ? AND pki_version.state = ?", issuerID, "R").
+	err = d.WithInstance().
+		Where("certid IN ? AND state = ?", certIDs, StateRevoked).
+		Order("revocation_time ASC").
 		Find(&list).Error
 	return list, err
 }

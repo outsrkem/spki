@@ -2,6 +2,7 @@ package cacert
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -18,18 +19,21 @@ func mustDao(c *app.RequestContext) (*models.DB, bool) {
 	dao, err := models.NewDBModel(c.GetString(constants.InstanceIdKey))
 	if err != nil {
 		hlog.Error("NewDBModel: ", err)
-		c.JSON(http.StatusUnauthorized, answer.ResBody("401", "instance not found", ""))
+		c.JSON(http.StatusUnauthorized, answer.ResBody(answer.EcodeInstance404, "instance not found", ""))
 		return nil, false
 	}
 	return dao, true
 }
 
-// svc 返回的消息类容
-type HandlerInfo struct {
-	HttpCode int
-	Errcode  string
-	Message  any
-	Payload  any
+// writeErr 统一把 Svc 错误映射成 HTTP 响应
+func writeErr(c *app.RequestContext, err error) {
+	var se *SvcError
+	if errors.As(err, &se) {
+		c.JSON(se.HttpCode, answer.ResBody(se.Ecode, se.Msg, ""))
+		return
+	}
+	hlog.Error("unclassified svc error: ", err)
+	c.JSON(http.StatusInternalServerError, answer.ResBody(answer.EcodeError, err.Error(), ""))
 }
 
 // ---------- 初始化根 CA ----------
@@ -40,7 +44,7 @@ func InitCa() app.HandlerFunc {
 		var cfg CertConfig
 		if err := c.BindJSON(&cfg); err != nil {
 			hlog.Error("InitCa bind: ", err)
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "请求体错误: "+err.Error(), ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestError, "请求体错误: "+err.Error(), ""))
 			return
 		}
 
@@ -51,11 +55,10 @@ func InitCa() app.HandlerFunc {
 
 		certID, err := InitRootCA(dao, &cfg)
 		if err != nil {
-			hlog.Error("InitCa: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusCreated, answer.ResBody("200", "", map[string]any{"certId": certID}))
+		c.JSON(http.StatusCreated, answer.ResBody(answer.EcodeOK, "", map[string]any{"certId": certID}))
 	}
 }
 
@@ -71,11 +74,11 @@ func IssueIntermediate() app.HandlerFunc {
 			} `json:"issuer"`
 		}
 		if err := c.BindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", err.Error(), ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestError, err.Error(), ""))
 			return
 		}
 		if req.Issuer.ID == "" {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuer.id is required", ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestParamsError, "issuer.id is required", ""))
 			return
 		}
 
@@ -86,11 +89,10 @@ func IssueIntermediate() app.HandlerFunc {
 
 		certID, err := IssueIntermediateSvc(dao, req.Issuer.ID, &req.CertConfig)
 		if err != nil {
-			hlog.Error("IssueIntermediate: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusCreated, answer.ResBody("200", "", map[string]any{"certId": certID}))
+		c.JSON(http.StatusCreated, answer.ResBody(answer.EcodeOK, "", map[string]any{"certId": certID}))
 	}
 }
 
@@ -106,11 +108,11 @@ func IssueEndEntity() app.HandlerFunc {
 			} `json:"issuer"`
 		}
 		if err := c.BindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", err.Error(), ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestError, err.Error(), ""))
 			return
 		}
 		if req.Issuer.ID == "" {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuer.id is required", ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestParamsError, "issuer.id is required", ""))
 			return
 		}
 
@@ -121,11 +123,10 @@ func IssueEndEntity() app.HandlerFunc {
 
 		certID, err := IssueEndEntitySvc(dao, req.Issuer.ID, &req.CertConfig)
 		if err != nil {
-			hlog.Error("IssueEndEntity: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusCreated, answer.ResBody("200", "", map[string]any{"certId": certID}))
+		c.JSON(http.StatusCreated, answer.ResBody(answer.EcodeOK, "", map[string]any{"certId": certID}))
 	}
 }
 
@@ -147,7 +148,7 @@ func RevokeCert() app.HandlerFunc {
 		if req.Reason != "" {
 			code, ok := ParseRevocationReason(req.Reason)
 			if !ok {
-				c.JSON(http.StatusBadRequest, answer.ResBody("444", "invalid revocation reason: "+req.Reason, ""))
+				c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRevocationReason, "invalid revocation reason: "+req.Reason, ""))
 				return
 			}
 			reason = code
@@ -158,14 +159,13 @@ func RevokeCert() app.HandlerFunc {
 			return
 		}
 		if err := RevokeCertSvc(dao, certID, reason); err != nil {
-			hlog.Error("RevokeCert: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
 
 		// 回显：同时给出 key 和数字码，方便前端和机器各自取用
 		reasonName := RevocationReasonName[reason]
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+		c.JSON(http.StatusOK, answer.ResBody(answer.EcodeOK, "", map[string]any{
 			"cert": map[string]string{
 				"id": certID,
 			},
@@ -188,11 +188,10 @@ func DeleteCert() app.HandlerFunc {
 			return
 		}
 		if err := DeleteCertSvc(dao, certID); err != nil {
-			hlog.Error("DeleteCert: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{"certId": certID, "deleted": true}))
+		c.JSON(http.StatusOK, answer.ResBody(answer.EcodeOK, "", map[string]any{"certId": certID, "deleted": true}))
 	}
 }
 
@@ -227,7 +226,7 @@ func ExportCertChain() app.HandlerFunc {
 			chain, err = BuildCertChain(dao, certID, includeRoot)
 		}
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
 		c.Data(http.StatusOK, "application/x-pem-file", []byte(chain))
@@ -241,7 +240,7 @@ func DownloadCRL() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		issuerID := c.Query("issuerId")
 		if issuerID == "" {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "issuerId is required", ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestParamsError, "issuerId is required", ""))
 			return
 		}
 
@@ -255,12 +254,7 @@ func DownloadCRL() app.HandlerFunc {
 
 		crl, err := BuildCRL(dao, issuerID, validFor)
 		if err != nil {
-			// 输入格式错误返回 400，其他返回 500
-			if isInvalidExpiryErr(err) {
-				c.JSON(http.StatusBadRequest, answer.ResBody("444", err.Error(), ""))
-				return
-			}
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
 
@@ -279,11 +273,11 @@ func RenewCert() app.HandlerFunc {
 			Expiry Expiry `json:"expiry"`
 		}
 		if err := c.BindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "请求体错误: "+err.Error(), ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestError, "请求体错误: "+err.Error(), ""))
 			return
 		}
 		if req.Expiry.Years == 0 && req.Expiry.Months == 0 && req.Expiry.Days == 0 {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "expiry is required", ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidExpiry, "expiry is required", ""))
 			return
 		}
 
@@ -293,11 +287,10 @@ func RenewCert() app.HandlerFunc {
 		}
 		rev, err := RenewCertSvc(dao, certID, req.Expiry)
 		if err != nil {
-			hlog.Error("RenewCert: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+		c.JSON(http.StatusOK, answer.ResBody(answer.EcodeOK, "", map[string]any{
 			"certId":   certID,
 			"revision": rev,
 		}))
@@ -325,7 +318,7 @@ func ListCert() app.HandlerFunc {
 		var query Query
 		if err := c.BindQuery(&query); err != nil {
 			hlog.Error("ListCert bind: ", err)
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "参数错误: "+err.Error(), ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestParamsError, "参数错误: "+err.Error(), ""))
 			return
 		}
 		a, _ := common.FromContext(ctx)
@@ -333,20 +326,20 @@ func ListCert() app.HandlerFunc {
 		// 校验 genre 范围
 		for _, g := range query.Genre {
 			if g < 1 || g > 3 {
-				c.JSON(http.StatusBadRequest, answer.ResBody("444", "genre must be 1/2/3", ""))
+				c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestParamsError, "genre must be 1/2/3", ""))
 				return
 			}
 		}
 		offset, limit, err := common.GetPagingQuery(c)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "参数错误", ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestParamsError, "参数错误", ""))
 			return
 		}
 
 		hasKey := -1
 		if query.HasKey != nil {
 			if *query.HasKey != 0 && *query.HasKey != 1 {
-				c.JSON(http.StatusBadRequest, answer.ResBody("444", "hasKey must be 0 or 1", ""))
+				c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestParamsError, "hasKey must be 0 or 1", ""))
 				return
 			}
 			hasKey = *query.HasKey
@@ -358,8 +351,7 @@ func ListCert() app.HandlerFunc {
 		count := int64(0)
 		items, err := ListCertsByGenres(dao, offset, limit, &count, query.Genre, hasKey)
 		if err != nil {
-			hlog.Error("ListCert: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
 
@@ -382,11 +374,10 @@ func ListCertVersions() app.HandlerFunc {
 		}
 		items, err := ListCertVersionsSvc(dao, certID)
 		if err != nil {
-			hlog.Error("ListCertVersions: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+		c.JSON(http.StatusOK, answer.ResBody(answer.EcodeOK, "", map[string]any{
 			"total": len(items),
 			"items": items,
 		}))
@@ -404,11 +395,10 @@ func FindRootCA() app.HandlerFunc {
 		}
 		info, err := FindRootCASvc(dao, certID)
 		if err != nil {
-			hlog.Error("FindRootCA: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusOK, answer.ResBody("200", "", info))
+		c.JSON(http.StatusOK, answer.ResBody(answer.EcodeOK, "", info))
 	}
 }
 
@@ -420,19 +410,22 @@ func ExportCertBundle() app.HandlerFunc {
 			return
 		}
 		cert, err := dao.GetCertificateByCertID(certID)
-		if err != nil || cert == nil {
-			c.JSON(http.StatusNotFound, answer.ResBody("404", "certificate not found", ""))
+		if err != nil {
+			writeErr(c, ErrInternal(answer.EcodeError, "query cert failed", err))
+			return
+		}
+		if cert == nil {
+			c.JSON(http.StatusNotFound, answer.ResBody(answer.EcodeCertificate404, "certificate not found", ""))
 			return
 		}
 		if cert.Genre != GenreLeaf {
-			c.JSON(http.StatusForbidden, answer.ResBody("403", "CA private key cannot be downloaded", ""))
+			c.JSON(http.StatusForbidden, answer.ResBody(answer.EcodeCACannotBeDownloaded, "CA private key cannot be downloaded", ""))
 			return
 		}
 
 		zipData, zipName, err := GetCertZip(dao, certID)
 		if err != nil {
-			hlog.Error("ExportCertBundle: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
 
@@ -449,11 +442,11 @@ func ImportCA() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		var req ImportCAReq
 		if err := c.BindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "请求体错误: "+err.Error(), ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestError, "请求体错误: "+err.Error(), ""))
 			return
 		}
 		if req.CertPem == "" {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "certPem is required", ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestParamsError, "certPem is required", ""))
 			return
 		}
 
@@ -463,11 +456,10 @@ func ImportCA() app.HandlerFunc {
 		}
 		resp, err := ImportCASvc(dao, &req)
 		if err != nil {
-			hlog.Error("ImportCA: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
-		c.JSON(http.StatusCreated, answer.ResBody("200", "", resp))
+		c.JSON(http.StatusCreated, answer.ResBody(answer.EcodeOK, "", resp))
 	}
 }
 
@@ -478,7 +470,7 @@ func OCSPResponder() app.HandlerFunc {
 		// OCSP 请求是二进制，直接用 Body()
 		reqDER := c.Request.Body()
 		if len(reqDER) == 0 {
-			c.JSON(http.StatusBadRequest, answer.ResBody("444", "empty ocsp request", ""))
+			c.JSON(http.StatusBadRequest, answer.ResBody(answer.EcodeInvalidRequestError, "empty ocsp request", ""))
 			return
 		}
 
@@ -489,8 +481,7 @@ func OCSPResponder() app.HandlerFunc {
 
 		respDER, err := OCSPResponderSvc(dao, reqDER)
 		if err != nil {
-			hlog.Error("OCSPResponder: ", err)
-			c.JSON(http.StatusInternalServerError, answer.ResBody("500", err.Error(), ""))
+			writeErr(c, err)
 			return
 		}
 

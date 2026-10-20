@@ -2,9 +2,8 @@ package cacert
 
 import (
 	"crypto/x509"
-	"errors"
-	"fmt"
 	"spki/src/models"
+	"spki/src/pkg/answer"
 	"spki/src/pkg/uuid4"
 )
 
@@ -12,32 +11,31 @@ import (
 
 func InitRootCA(dao *models.DB, cfg *CertConfig) (string, error) {
 	if err := validateConfig(cfg); err != nil {
-		return "", err
+		return "", ErrBadRequest(answer.EcodeInvalidRequestParamsError, "invalid config", err)
 	}
 
 	key, err := createKey(cfg.Key.Algo, cfg.Key.Size)
 	if err != nil {
-		return "", fmt.Errorf("create key: %w", err)
+		return "", ErrInternal(answer.EcodeError, "create key failed", err)
 	}
 	der, err := signCert(key, nil, nil, cfg, true)
 	if err != nil {
-		return "", fmt.Errorf("sign CA: %w", err)
+		return "", ErrBadRequest(answer.EcodeInvalidRequestError, "sign CA failed", err)
 	}
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		return "", fmt.Errorf("parse cert: %w", err)
+		return "", ErrInternal(answer.EcodeError, "parse cert failed", err)
 	}
 	encKey, encPassphrase, err := encryptPrivateKey(key)
 	if err != nil {
-		return "", fmt.Errorf("encrypt private key: %w", err)
+		return "", ErrInternal(answer.EcodeError, "encrypt private key failed", err)
 	}
 	certPEM := pemEncode("CERTIFICATE", der)
 
-	// 指纹
 	certFP := calcCertFingerprint(cert)
 	keyFP, err := calcPubKeyFingerprint(key)
 	if err != nil {
-		return "", fmt.Errorf("calc key fingerprint: %w", err)
+		return "", ErrInternal(answer.EcodeError, "calc key fingerprint failed", err)
 	}
 
 	certID := uuid4.Uuid4Str()
@@ -80,7 +78,7 @@ func InitRootCA(dao *models.DB, cfg *CertConfig) (string, error) {
 	}
 
 	if err := dao.SaveCertBundle(certRec, keyRec, version); err != nil {
-		return "", err
+		return "", ErrInternal(answer.EcodeError, "save cert bundle failed", err)
 	}
 	return certID, nil
 }
@@ -89,60 +87,69 @@ func InitRootCA(dao *models.DB, cfg *CertConfig) (string, error) {
 
 func IssueIntermediateSvc(dao *models.DB, parentID string, cfg *CertConfig) (string, error) {
 	if err := validateConfig(cfg); err != nil {
-		return "", err
+		return "", ErrBadRequest(answer.EcodeInvalidRequestParamsError, "invalid config", err)
 	}
 
 	parent, err := dao.GetCertificateByCertID(parentID)
 	if err != nil {
-		return "", fmt.Errorf("get parent: %w", err)
+		return "", ErrInternal(answer.EcodeError, "query parent failed", err)
 	}
 	if parent == nil {
-		return "", errors.New("parent CA not found")
+		return "", ErrNotFound(answer.EcodeIssuer404, "parent CA not found", nil)
 	}
-	parentVer, err := dao.GetLatestVersion(parentID)
-	if err != nil || parentVer == nil {
-		return "", errors.New("parent version not found")
-	}
-	if parentVer.KeyID == nil {
-		return "", errors.New("parent CA has no private key, cannot sign")
-	}
-	parentKey, err := dao.GetPrivateKeyByKeyID(*parentVer.KeyID)
-	if err != nil || parentKey == nil {
-		return "", errors.New("parent key not found")
+	if parent.Genre != GenreRoot && parent.Genre != GenreInter {
+		return "", ErrBadRequest(answer.EcodeNonCACertificate, "parent must be a CA certificate", nil)
 	}
 
+	parentVer, err := dao.GetLatestVersion(parentID)
+	if err != nil {
+		return "", ErrInternal(answer.EcodeError, "query parent version failed", err)
+	}
+	if parentVer == nil {
+		return "", ErrNotFound(answer.EcodeVersion404, "parent version not found", nil)
+	}
+	if parentVer.KeyID == nil {
+		return "", ErrBadRequest(answer.EcodeCACannotSign, "parent CA has no private key, cannot sign", nil)
+	}
+
+	parentKey, err := dao.GetPrivateKeyByKeyID(*parentVer.KeyID)
+	if err != nil {
+		return "", ErrInternal(answer.EcodeError, "query parent key failed", err)
+	}
+	if parentKey == nil {
+		return "", ErrNotFound(answer.EcodePrivateKey404, "parent key not found", nil)
+	}
 	parentCert, err := parseCertPEM(*parentVer.Cert)
 	if err != nil {
-		return "", err
+		return "", ErrInternal(answer.EcodeError, "parse parent cert failed", err)
 	}
 	parentSigner, err := decryptPrivateKey(parentKey.PrivateKey, parentKey.Passphrase)
 	if err != nil {
-		return "", err
+		return "", ErrInternal(answer.EcodeError, "decrypt parent key failed", err)
 	}
 
 	key, err := createKey(cfg.Key.Algo, cfg.Key.Size)
 	if err != nil {
-		return "", fmt.Errorf("create key: %w", err)
+		return "", ErrInternal(answer.EcodeError, "create key failed", err)
 	}
 	der, err := signCert(key, parentCert, parentSigner, cfg, true)
 	if err != nil {
-		return "", fmt.Errorf("sign intermediate: %w", err)
+		return "", ErrBadRequest(answer.EcodeInvalidRequestError, "sign intermediate failed", err)
 	}
 	cert, err := x509.ParseCertificate(der)
 	if err != nil {
-		return "", err
+		return "", ErrInternal(answer.EcodeError, "parse cert failed", err)
 	}
 	encKey, encPassphrase, err := encryptPrivateKey(key)
 	if err != nil {
-		return "", fmt.Errorf("encrypt private key: %w", err)
+		return "", ErrInternal(answer.EcodeError, "encrypt private key failed", err)
 	}
 	certPEM := pemEncode("CERTIFICATE", der)
 
-	// 指纹
 	certFP := calcCertFingerprint(cert)
 	keyFP, err := calcPubKeyFingerprint(key)
 	if err != nil {
-		return "", fmt.Errorf("calc key fingerprint: %w", err)
+		return "", ErrInternal(answer.EcodeError, "calc key fingerprint failed", err)
 	}
 
 	certID := uuid4.Uuid4Str()
@@ -185,7 +192,7 @@ func IssueIntermediateSvc(dao *models.DB, parentID string, cfg *CertConfig) (str
 	}
 
 	if err := dao.SaveCertBundle(certRec, keyRec, version); err != nil {
-		return "", err
+		return "", ErrInternal(answer.EcodeError, "save cert bundle failed", err)
 	}
 	return certID, nil
 }
