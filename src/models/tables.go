@@ -33,7 +33,7 @@ func (d *DB) SaveCertBundle(cert Certificate, key *PrivateKey, version Version) 
 	})
 }
 
-// RevokeCertTx 事务吊销：只更新 version
+// RevokeCertTx 事务吊销：只更新未吊销的 version
 func (d *DB) RevokeCertTx(certID string, state string, revocationTime int64, revocationCode int8) error {
 	if !IsValidRevocationCode(revocationCode) {
 		return errors.New("invalid revocation code")
@@ -41,6 +41,7 @@ func (d *DB) RevokeCertTx(certID string, state string, revocationTime int64, rev
 	return d.db.Transaction(func(tx *gorm.DB) error {
 		return tx.Model(&Version{}).
 			Where("instance_id = ? AND certid = ?", d.instanceId, certID).
+			Where("state IS NULL OR state != ?", StateRevoked).
 			Updates(map[string]any{
 				"state":           state,
 				"revocation_time": revocationTime,
@@ -86,15 +87,24 @@ func (d *DB) DeleteCertTx(certID string) error {
 	})
 }
 
-// ListRevokedByIssuer 查出某 CA 下所有已吊销的末端证书版本
+// ListRevokedByIssuer 查出某 CA 下所有已吊销的子证书版本
 func (d *DB) ListRevokedByIssuer(issuerID string) ([]Version, error) {
+	var certIDs []string
+	err := d.WithInstance().
+		Model(&Certificate{}).
+		Where("parent_id = ?", issuerID).
+		Pluck("certid", &certIDs).Error
+	if err != nil {
+		return nil, err
+	}
+	if len(certIDs) == 0 {
+		return nil, nil
+	}
+
 	var list []Version
-	err := d.db.
-		Table("pki_version").
-		Joins("JOIN pki_certificate ON pki_certificate.certid = pki_version.certid").
-		Where("pki_version.instance_id = ?", d.instanceId).
-		Where("pki_certificate.instance_id = ?", d.instanceId).
-		Where("pki_certificate.parent_id = ? AND pki_version.state = ?", issuerID, "R").
+	err = d.WithInstance().
+		Where("certid IN ? AND state = ?", certIDs, StateRevoked).
+		Order("revision DESC").
 		Find(&list).Error
 	return list, err
 }

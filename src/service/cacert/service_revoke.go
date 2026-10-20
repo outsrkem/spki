@@ -28,6 +28,10 @@ func RevokeCertSvc(dao *models.DB, certID string, reason int8) error {
 	if cert == nil {
 		return ErrNotFound(answer.EcodeCertificate404, "certificate not found", nil)
 	}
+	if v, err := dao.GetLatestVersion(certID); err == nil && v != nil &&
+		v.State != nil && *v.State == models.StateRevoked {
+		return nil
+	}
 	now := nowMillis()
 	if err := dao.RevokeCertTx(certID, StateRevoked, now, reason); err != nil {
 		return ErrInternal(answer.EcodeError, "revoke cert failed", err)
