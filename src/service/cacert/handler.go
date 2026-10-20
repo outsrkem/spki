@@ -158,6 +158,9 @@ func RevokeCert() app.HandlerFunc {
 		// 回显：同时给出 key 和数字码，方便前端和机器各自取用
 		reasonName := RevocationReasonName[reason]
 		c.JSON(http.StatusOK, answer.ResBody("200", "", map[string]any{
+			"cert": map[string]string{
+				"id": certID,
+			},
 			"certId": certID,
 			"status": "R",
 			"reason": reasonName,
