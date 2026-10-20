@@ -3,9 +3,8 @@ package cacert
 import (
 	"crypto"
 	"crypto/x509"
-	"errors"
-	"fmt"
 	"spki/src/models"
+	"spki/src/pkg/answer"
 	"time"
 
 	"golang.org/x/crypto/ocsp"
@@ -18,7 +17,7 @@ func OCSPResponderSvc(dao *models.DB, reqDER []byte) ([]byte, error) {
 	// 1. 解析 OCSP 请求
 	req, err := ocsp.ParseRequest(reqDER)
 	if err != nil {
-		return nil, fmt.Errorf("parse ocsp request: %w", err)
+		return nil, ErrBadRequest(answer.EcodeInvalidRequestError, "parse ocsp request failed", err)
 	}
 
 	// 2. 找到签发该证书的 issuer（证书、签名私钥、issuer 的 certid）
@@ -34,7 +33,7 @@ func OCSPResponderSvc(dao *models.DB, reqDER []byte) ([]byte, error) {
 
 	revoked, err := dao.ListRevokedByIssuerBySerial(issuerID, req.SerialNumber.Text(16))
 	if err != nil {
-		return nil, fmt.Errorf("query revocation: %w", err)
+		return nil, ErrInternal(answer.EcodeError, "query revocation failed", err)
 	}
 	if revoked != nil && revoked.RevocationTime != nil {
 		status = ocsp.Revoked
@@ -60,7 +59,7 @@ func OCSPResponderSvc(dao *models.DB, reqDER []byte) ([]byte, error) {
 	// 5. 用 issuer 证书 + 私钥签名（RFC 6960 允许 issuer 直接签）
 	respDER, err := ocsp.CreateResponse(issuerCert, issuerCert, *tpl, issuerSigner)
 	if err != nil {
-		return nil, fmt.Errorf("create ocsp response: %w", err)
+		return nil, ErrInternal(answer.EcodeError, "create ocsp response failed", err)
 	}
 	return respDER, nil
 }
@@ -73,8 +72,11 @@ func OCSPResponderSvc(dao *models.DB, reqDER []byte) ([]byte, error) {
 func findIssuerForOCSP(dao *models.DB, req *ocsp.Request) (*x509.Certificate, crypto.Signer, string, error) {
 	// 用 serial 找证书记录
 	certRec, err := dao.GetCertificateBySerial(req.SerialNumber.Text(16))
-	if err != nil || certRec == nil {
-		return nil, nil, "", errors.New("certificate not found for serial")
+	if err != nil {
+		return nil, nil, "", ErrInternal(answer.EcodeError, "query cert by serial failed", err)
+	}
+	if certRec == nil {
+		return nil, nil, "", ErrNotFound(answer.EcodeCertificate404, "certificate not found for serial", nil)
 	}
 
 	// 确定 issuer：末端/中间证书用 parent，根 CA 自签
@@ -87,24 +89,30 @@ func findIssuerForOCSP(dao *models.DB, req *ocsp.Request) (*x509.Certificate, cr
 	}
 
 	issuerVer, err := dao.GetLatestVersion(issuerID)
-	if err != nil || issuerVer == nil {
-		return nil, nil, "", errors.New("issuer version not found")
+	if err != nil {
+		return nil, nil, "", ErrInternal(answer.EcodeError, "query issuer version failed", err)
+	}
+	if issuerVer == nil {
+		return nil, nil, "", ErrNotFound(answer.EcodeVersion404, "issuer version not found", nil)
 	}
 	if issuerVer.KeyID == nil {
-		return nil, nil, "", errors.New("issuer CA has no private key")
+		return nil, nil, "", ErrBadRequest(answer.EcodeCACannotSign, "issuer CA has no private key", nil)
 	}
 
 	issuerKeyRec, err := dao.GetPrivateKeyByKeyID(*issuerVer.KeyID)
-	if err != nil || issuerKeyRec == nil {
-		return nil, nil, "", errors.New("issuer key not found")
+	if err != nil {
+		return nil, nil, "", ErrInternal(answer.EcodeError, "query issuer key failed", err)
+	}
+	if issuerKeyRec == nil {
+		return nil, nil, "", ErrNotFound(answer.EcodePrivateKey404, "issuer key not found", nil)
 	}
 	issuerCert, err := parseCertPEM(*issuerVer.Cert)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", ErrInternal(answer.EcodeError, "parse issuer cert failed", err)
 	}
 	signer, err := decryptPrivateKey(issuerKeyRec.PrivateKey, issuerKeyRec.Passphrase)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", ErrInternal(answer.EcodeError, "decrypt issuer key failed", err)
 	}
 	return issuerCert, signer, issuerID, nil
 }

@@ -1,8 +1,8 @@
 package cacert
 
 import (
-	"errors"
 	"spki/src/models"
+	"spki/src/pkg/answer"
 )
 
 // CertListItem 列表项 DTO
@@ -36,17 +36,13 @@ type VersionItem struct {
 	State          *string `json:"state"`
 }
 
-// normalizeState 把"有效但已过期"修正为"已过期"，吊销优先
-// 数据库只存 V/R，E 在查询时按 expiration_time 实时计算，不落库
 func normalizeState(state *string, notAfter *int64) *string {
 	if state == nil {
 		return nil
 	}
-	// 吊销是终态，不覆盖
 	if *state == StateRevoked {
 		return state
 	}
-	// 有效但已过期 → E
 	if *state == StateValid && notAfter != nil && *notAfter < nowMillis() {
 		expired := StateExpired
 		return &expired
@@ -58,8 +54,11 @@ func normalizeState(state *string, notAfter *int64) *string {
 
 func BuildCAChain(dao *models.DB, certID string, includeRoot bool) (string, error) {
 	cur, err := dao.GetCertificateByCertID(certID)
-	if err != nil || cur == nil {
-		return "", errors.New("certificate not found")
+	if err != nil {
+		return "", ErrInternal(answer.EcodeError, "query cert failed", err)
+	}
+	if cur == nil {
+		return "", ErrNotFound(answer.EcodeCertificate404, "certificate not found", nil)
 	}
 	var out string
 	for cur != nil {
@@ -84,12 +83,18 @@ func BuildCAChain(dao *models.DB, certID string, includeRoot bool) (string, erro
 
 func BuildCertChain(dao *models.DB, certID string, includeRoot bool) (string, error) {
 	cert, err := dao.GetCertificateByCertID(certID)
-	if err != nil || cert == nil {
-		return "", errors.New("certificate not found")
+	if err != nil {
+		return "", ErrInternal(answer.EcodeError, "query cert failed", err)
+	}
+	if cert == nil {
+		return "", ErrNotFound(answer.EcodeCertificate404, "certificate not found", nil)
 	}
 	v, err := dao.GetLatestVersion(certID)
-	if err != nil || v == nil {
-		return "", errors.New("version not found")
+	if err != nil {
+		return "", ErrInternal(answer.EcodeError, "query version failed", err)
+	}
+	if v == nil {
+		return "", ErrNotFound(answer.EcodeVersion404, "version not found", nil)
 	}
 	chain := *v.Cert
 	if cert.ParentID != nil {
@@ -105,8 +110,11 @@ func BuildCertChain(dao *models.DB, certID string, includeRoot bool) (string, er
 // FindRootCASvc 从任意证书向上找到根 CA
 func FindRootCASvc(dao *models.DB, certID string) (*RootInfo, error) {
 	cur, err := dao.GetCertificateByCertID(certID)
-	if err != nil || cur == nil {
-		return nil, errors.New("certificate not found")
+	if err != nil {
+		return nil, ErrInternal(answer.EcodeError, "query cert failed", err)
+	}
+	if cur == nil {
+		return nil, ErrNotFound(answer.EcodeCertificate404, "certificate not found", nil)
 	}
 
 	chain := make([]string, 0, 4)
@@ -125,7 +133,7 @@ func FindRootCASvc(dao *models.DB, certID string) (*RootInfo, error) {
 	}
 
 	if root == nil {
-		return nil, errors.New("root CA not found")
+		return nil, ErrNotFound(answer.EcodeRootCANotFound, "root CA not found", nil)
 	}
 
 	info := &RootInfo{
@@ -137,7 +145,6 @@ func FindRootCASvc(dao *models.DB, certID string) (*RootInfo, error) {
 		Chain:   chain,
 	}
 
-	// 取最新版本信息
 	v, err := dao.GetLatestVersion(root.CertID)
 	if err == nil && v != nil {
 		info.Serial = v.Serial
@@ -152,33 +159,39 @@ func FindRootCASvc(dao *models.DB, certID string) (*RootInfo, error) {
 // BuildRootPEM 从任意证书向上找到根 CA，返回根 CA 的 PEM
 func BuildRootPEM(dao *models.DB, certID string) (string, error) {
 	cur, err := dao.GetCertificateByCertID(certID)
-	if err != nil || cur == nil {
-		return "", errors.New("certificate not found")
+	if err != nil {
+		return "", ErrInternal(answer.EcodeError, "query cert failed", err)
+	}
+	if cur == nil {
+		return "", ErrNotFound(answer.EcodeCertificate404, "certificate not found", nil)
 	}
 
-	// 向上遍历，直到 parent_id == nil
 	for {
 		if cur.ParentID == nil {
 			v, err := dao.GetLatestVersion(cur.CertID)
-			if err != nil || v == nil {
-				return "", errors.New("root version not found")
+			if err != nil {
+				return "", ErrInternal(answer.EcodeError, "query version failed", err)
+			}
+			if v == nil {
+				return "", ErrNotFound(answer.EcodeVersion404, "root version not found", nil)
 			}
 			return *v.Cert, nil
 		}
 		cur, err = dao.GetCertificateByCertID(*cur.ParentID)
-		if err != nil || cur == nil {
-			break
+		if err != nil {
+			return "", ErrInternal(answer.EcodeError, "query parent cert failed", err)
+		}
+		if cur == nil {
+			return "", ErrNotFound(answer.EcodeCertificate404, "parent cert not found", nil)
 		}
 	}
-	return "", errors.New("root CA not found")
 }
 
 // ListCertsByGenres 按多个类型列出证书
-// genres 为空 → 全部
 func ListCertsByGenres(dao *models.DB, offset, limit int, count *int64, genres []int, hasKey int) ([]CertListItem, error) {
 	certs, err := dao.ListCertificatesByGenres(offset, limit, count, genres, hasKey)
 	if err != nil {
-		return nil, err
+		return nil, ErrInternal(answer.EcodeError, "list certs failed", err)
 	}
 
 	items := make([]CertListItem, 0, len(certs))
@@ -214,13 +227,16 @@ func ListCertsByGenres(dao *models.DB, offset, limit int, count *int64, genres [
 // ListCertVersionsSvc 列出某证书的所有版本
 func ListCertVersionsSvc(dao *models.DB, certID string) ([]VersionItem, error) {
 	cert, err := dao.GetCertificateByCertID(certID)
-	if err != nil || cert == nil {
-		return nil, errors.New("certificate not found")
+	if err != nil {
+		return nil, ErrInternal(answer.EcodeError, "query cert failed", err)
+	}
+	if cert == nil {
+		return nil, ErrNotFound(answer.EcodeCertificate404, "certificate not found", nil)
 	}
 
 	versions, err := dao.ListVersionsByCertID(certID)
 	if err != nil {
-		return nil, err
+		return nil, ErrInternal(answer.EcodeError, "list versions failed", err)
 	}
 
 	items := make([]VersionItem, 0, len(versions))

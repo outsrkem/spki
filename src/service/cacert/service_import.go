@@ -3,9 +3,8 @@ package cacert
 import (
 	"crypto"
 	"crypto/x509"
-	"errors"
-	"fmt"
 	"spki/src/models"
+	"spki/src/pkg/answer"
 	"spki/src/pkg/uuid4"
 )
 
@@ -34,20 +33,20 @@ func ImportCASvc(dao *models.DB, req *ImportCAReq) (*ImportCAResp, error) {
 	// 1. 解析证书
 	cert, err := parseSingleCertPEM(req.CertPem)
 	if err != nil {
-		return nil, fmt.Errorf("parse cert: %w", err)
+		return nil, ErrBadRequest(answer.EcodeInvalidCertPEM, "parse cert failed", err)
 	}
 
 	// 1.5 证书指纹判重
 	certFP := calcCertFingerprint(cert)
 	if existing, err := dao.GetVersionByFingerprint(certFP); err != nil {
-		return nil, fmt.Errorf("check cert fingerprint: %w", err)
+		return nil, ErrInternal(answer.EcodeError, "check cert fingerprint failed", err)
 	} else if existing != nil {
-		return nil, fmt.Errorf("certificate already imported: certId=%s", *existing.CertID)
+		return nil, ErrConflict(answer.EcodeResourceExists, "certificate already imported", nil)
 	}
 
 	// 2. 必须是 CA
 	if !cert.IsCA {
-		return nil, errors.New("only CA certificates can be imported")
+		return nil, ErrBadRequest(answer.EcodeNonCACertificate, "only CA certificates can be imported", nil)
 	}
 
 	// 3. 判断根 CA 还是中间 CA
@@ -69,27 +68,27 @@ func ImportCASvc(dao *models.DB, req *ImportCAReq) (*ImportCAResp, error) {
 	if hasKey {
 		signer, err = parsePKCS8Key(req.KeyPem)
 		if err != nil {
-			return nil, fmt.Errorf("parse key: %w", err)
+			return nil, ErrBadRequest(answer.EcodeInvalidKeyPEM, "parse key failed", err)
 		}
 
 		keyFP, err = calcPubKeyFingerprint(signer)
 		if err != nil {
-			return nil, fmt.Errorf("calc key fingerprint: %w", err)
+			return nil, ErrInternal(answer.EcodeError, "calc key fingerprint failed", err)
 		}
 		if existing, err := dao.GetPrivateKeyByFingerprint(keyFP); err != nil {
-			return nil, fmt.Errorf("check key fingerprint: %w", err)
+			return nil, ErrInternal(answer.EcodeError, "check key fingerprint failed", err)
 		} else if existing != nil {
-			return nil, fmt.Errorf("private key already imported: keyId=%s", existing.KeyID)
+			return nil, ErrConflict(answer.EcodeResourceExists, "private key already imported", nil)
 		}
 
 		if err := matchCertAndKey(cert, signer); err != nil {
-			return nil, err
+			return nil, ErrBadRequest(answer.EcodeKeyCertMismatch, "key/cert mismatch", err)
 		}
 	}
 
 	// 5. 校验 KeyUsage 有 certSign
 	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
-		return nil, errors.New("CA certificate must have certSign key usage")
+		return nil, ErrBadRequest(answer.EcodeNonCACertificate, "CA certificate must have certSign key usage", nil)
 	}
 
 	// 6. 处理 parentId
@@ -97,20 +96,23 @@ func ImportCASvc(dao *models.DB, req *ImportCAReq) (*ImportCAResp, error) {
 	if !isRoot {
 		if req.IssuerID != "" {
 			parent, err := dao.GetCertificateByCertID(req.IssuerID)
-			if err != nil || parent == nil {
-				return nil, errors.New("issuerId not found")
+			if err != nil {
+				return nil, ErrInternal(answer.EcodeError, "query issuer failed", err)
+			}
+			if parent == nil {
+				return nil, ErrNotFound(answer.EcodeIssuer404, "issuerId not found", nil)
 			}
 			if parent.Genre != GenreRoot && parent.Genre != GenreInter {
-				return nil, errors.New("issuer must be a CA")
+				return nil, ErrBadRequest(answer.EcodeNonCACertificate, "issuer must be a CA", nil)
 			}
 			parentID = &parent.CertID
 		} else {
 			parent, err := dao.FindCASubject(cert.Issuer.String())
 			if err != nil {
-				return nil, fmt.Errorf("find parent: %w", err)
+				return nil, ErrInternal(answer.EcodeError, "find parent failed", err)
 			}
 			if parent == nil {
-				return nil, errors.New("parent CA not found, please specify issuerId")
+				return nil, ErrNotFound(answer.EcodeParentCA404, "parent CA not found, please specify issuerId", nil)
 			}
 			parentID = &parent.CertID
 		}
@@ -150,7 +152,7 @@ func ImportCASvc(dao *models.DB, req *ImportCAReq) (*ImportCAResp, error) {
 
 		encKey, encPassphrase, err := encryptPrivateKey(signer)
 		if err != nil {
-			return nil, fmt.Errorf("encrypt key: %w", err)
+			return nil, ErrInternal(answer.EcodeError, "encrypt key failed", err)
 		}
 
 		keyRec = &models.PrivateKey{
@@ -176,7 +178,7 @@ func ImportCASvc(dao *models.DB, req *ImportCAReq) (*ImportCAResp, error) {
 	}
 
 	if err := dao.SaveCertBundle(certRec, keyRec, version); err != nil {
-		return nil, err
+		return nil, ErrInternal(answer.EcodeError, "save cert bundle failed", err)
 	}
 
 	return &ImportCAResp{

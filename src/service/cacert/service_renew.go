@@ -6,9 +6,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
-	"errors"
-	"fmt"
 	"spki/src/models"
+	"spki/src/pkg/answer"
 )
 
 // ---------- 续签 ----------
@@ -18,15 +17,15 @@ import (
 //   - 中间 CA / 末端证书 → 上级 CA 签
 func RenewCertSvc(dao *models.DB, certID string, expiry Expiry) (int, error) {
 	if expiry.Years == 0 && expiry.Months == 0 && expiry.Days == 0 {
-		return 0, errors.New("expiry is required")
+		return 0, ErrBadRequest(answer.EcodeInvalidExpiry, "expiry is required", nil)
 	}
 
 	cert, err := dao.GetCertificateByCertID(certID)
 	if err != nil {
-		return 0, fmt.Errorf("get certificate: %w", err)
+		return 0, ErrInternal(answer.EcodeError, "query cert failed", err)
 	}
 	if cert == nil {
-		return 0, errors.New("certificate not found")
+		return 0, ErrNotFound(answer.EcodeCertificate404, "certificate not found", nil)
 	}
 
 	// 根 CA：自签名
@@ -48,33 +47,42 @@ func RenewCertSvc(dao *models.DB, certID string, expiry Expiry) (int, error) {
 func renewCert(dao *models.DB, certID string, expiry Expiry, isCA, selfSign bool) (int, error) {
 	// 1. 查原证书
 	cert, err := dao.GetCertificateByCertID(certID)
-	if err != nil || cert == nil {
-		return 0, errors.New("certificate not found")
+	if err != nil {
+		return 0, ErrInternal(answer.EcodeError, "query cert failed", err)
+	}
+	if cert == nil {
+		return 0, ErrNotFound(answer.EcodeCertificate404, "certificate not found", nil)
 	}
 
 	// 2. 查原证书最新版本
 	oldVer, err := dao.GetLatestVersion(certID)
-	if err != nil || oldVer == nil {
-		return 0, errors.New("version not found")
+	if err != nil {
+		return 0, ErrInternal(answer.EcodeError, "query version failed", err)
+	}
+	if oldVer == nil {
+		return 0, ErrNotFound(answer.EcodeVersion404, "version not found", nil)
 	}
 	if oldVer.KeyID == nil {
-		return 0, errors.New("old version has no key (CSR mode not supported)")
+		return 0, ErrBadRequest(answer.EcodeCACannotSign, "old version has no key (CSR mode not supported)", nil)
 	}
 
 	// 3. 复用旧私钥
 	oldKey, err := dao.GetPrivateKeyByKeyID(*oldVer.KeyID)
-	if err != nil || oldKey == nil {
-		return 0, errors.New("old private key not found")
+	if err != nil {
+		return 0, ErrInternal(answer.EcodeError, "query old key failed", err)
+	}
+	if oldKey == nil {
+		return 0, ErrNotFound(answer.EcodePrivateKey404, "old private key not found", nil)
 	}
 	signer, err := decryptPrivateKey(oldKey.PrivateKey, oldKey.Passphrase)
 	if err != nil {
-		return 0, fmt.Errorf("decrypt old key: %w", err)
+		return 0, ErrInternal(answer.EcodeError, "decrypt old key failed", err)
 	}
 
 	// 4. 解析旧证书，还原配置
 	oldCert, err := parseCertPEM(*oldVer.Cert)
 	if err != nil {
-		return 0, err
+		return 0, ErrInternal(answer.EcodeError, "parse old cert failed", err)
 	}
 	cfg := buildRenewConfig(cert, oldCert, expiry, isCA)
 
@@ -84,40 +92,49 @@ func renewCert(dao *models.DB, certID string, expiry Expiry, isCA, selfSign bool
 
 	if !selfSign {
 		issuer, err := dao.GetCertificateByCertID(*cert.ParentID)
-		if err != nil || issuer == nil {
-			return 0, errors.New("issuer not found")
+		if err != nil {
+			return 0, ErrInternal(answer.EcodeError, "query issuer failed", err)
+		}
+		if issuer == nil {
+			return 0, ErrNotFound(answer.EcodeIssuer404, "issuer not found", nil)
 		}
 		issuerVer, err := dao.GetLatestVersion(*cert.ParentID)
-		if err != nil || issuerVer == nil {
-			return 0, errors.New("issuer version not found")
+		if err != nil {
+			return 0, ErrInternal(answer.EcodeError, "query issuer version failed", err)
+		}
+		if issuerVer == nil {
+			return 0, ErrNotFound(answer.EcodeVersion404, "issuer version not found", nil)
 		}
 
 		if issuerVer.KeyID == nil {
-			return 0, errors.New("issuer CA has no private key, cannot sign")
+			return 0, ErrBadRequest(answer.EcodeCACannotSign, "issuer CA has no private key, cannot sign", nil)
 		}
 
 		issuerKey, err := dao.GetPrivateKeyByKeyID(*issuerVer.KeyID)
-		if err != nil || issuerKey == nil {
-			return 0, errors.New("issuer key not found")
+		if err != nil {
+			return 0, ErrInternal(answer.EcodeError, "query issuer key failed", err)
+		}
+		if issuerKey == nil {
+			return 0, ErrNotFound(answer.EcodePrivateKey404, "issuer key not found", nil)
 		}
 		parentCert, err = parseCertPEM(*issuerVer.Cert)
 		if err != nil {
-			return 0, err
+			return 0, ErrInternal(answer.EcodeError, "parse issuer cert failed", err)
 		}
 		parentSigner, err = decryptPrivateKey(issuerKey.PrivateKey, issuerKey.Passphrase)
 		if err != nil {
-			return 0, err
+			return 0, ErrInternal(answer.EcodeError, "decrypt issuer key failed", err)
 		}
 	}
 
 	// 6. 重新签一张
 	der, err := signCert(signer, parentCert, parentSigner, cfg, isCA)
 	if err != nil {
-		return 0, fmt.Errorf("sign renew: %w", err)
+		return 0, ErrBadRequest(answer.EcodeInvalidRequestError, "sign renew failed", err)
 	}
 	newCert, err := x509.ParseCertificate(der)
 	if err != nil {
-		return 0, err
+		return 0, ErrInternal(answer.EcodeError, "parse cert failed", err)
 	}
 	certPEM := pemEncode("CERTIFICATE", der)
 
@@ -126,7 +143,7 @@ func renewCert(dao *models.DB, certID string, expiry Expiry, isCA, selfSign bool
 	// 7. 取下一个 revision
 	maxRev, err := dao.GetMaxRevision(certID)
 	if err != nil {
-		return 0, err
+		return 0, ErrInternal(answer.EcodeError, "get max revision failed", err)
 	}
 	rev := maxRev + 1
 
@@ -150,7 +167,7 @@ func renewCert(dao *models.DB, certID string, expiry Expiry, isCA, selfSign bool
 
 	// 9. 事务写入
 	if err := dao.SaveVersionWithKey(nil, newVer); err != nil {
-		return 0, err
+		return 0, ErrInternal(answer.EcodeError, "save version failed", err)
 	}
 	return rev, nil
 }
