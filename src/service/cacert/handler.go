@@ -24,6 +24,14 @@ func mustDao(c *app.RequestContext) (*models.DB, bool) {
 	return dao, true
 }
 
+// svc 返回的消息类容
+type HandlerInfo struct {
+	HttpCode int
+	Errcode  string
+	Message  any
+	Payload  any
+}
+
 // ---------- 初始化根 CA ----------
 
 // InitCa POST /spki/ca/init
