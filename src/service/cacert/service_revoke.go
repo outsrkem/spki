@@ -45,7 +45,7 @@ func RevokeCertSvc(dao *models.DB, certID string, reason int8) error {
 func DeleteCertSvc(dao *models.DB, certID string) error {
 	if err := dao.DeleteCertTx(certID); err != nil {
 		if errors.Is(err, models.ErrHasChildren) {
-			return ErrConflict(answer.EcodeResourceExists, "CA has sub-certificates, cannot delete", err)
+			return ErrConflict(answer.EcodeDeleteResourceConflict, "CA has sub-certificates, cannot delete", err)
 		}
 		return ErrInternal(answer.EcodeError, "delete cert failed", err)
 	}
