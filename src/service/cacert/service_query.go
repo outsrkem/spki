@@ -3,6 +3,7 @@ package cacert
 import (
 	"spki/src/models"
 	"spki/src/pkg/answer"
+	"strings"
 )
 
 // CertListItem 列表项 DTO
@@ -20,6 +21,7 @@ type CertListItem struct {
 	NotBefore *int64   `json:"notBefore,omitempty"`
 	NotAfter  *int64   `json:"notAfter,omitempty"`
 	Key       *KeySpec `json:"key,omitempty"`
+	Chain     string   `json:"chain,omitempty"`
 }
 
 // VersionItem 版本列表项 DTO
@@ -34,6 +36,64 @@ type VersionItem struct {
 	RevocationTime *int64  `json:"revocationTime,omitempty"`
 	RevocationCode *int8   `json:"revocationCode,omitempty"`
 	State          *string `json:"state"`
+}
+
+// extractCNFromSubject 从 formatSubject 生成的字符串里取 CN
+// 形如 "/C=CN/O=PrivateSign/OU=PrivateSign/CN=AAA PrivateSign Root CA"
+// CN 由 formatSubject 保证是最后一个 RDN
+func extractCNFromSubject(subject string) string {
+	const marker = "/CN="
+	i := strings.LastIndex(subject, marker)
+	if i < 0 {
+		return ""
+	}
+	cn := subject[i+len(marker):]
+	if j := strings.Index(cn, "/"); j >= 0 {
+		cn = cn[:j]
+	}
+	return cn
+}
+
+// resolveCertChain 从 certID 向上走到根，返回 CN 链（根在前，末端在后）
+// 结果按 certID 缓存在 cache 里；visited 用于环检测
+func resolveCertChain(dao *models.DB, certID string, cache map[string][]string, visited map[string]bool) []string {
+	if chain, ok := cache[certID]; ok {
+		return chain
+	}
+	if visited[certID] {
+		return nil
+	}
+	visited[certID] = true
+
+	cert, err := dao.GetCertificateByCertID(certID)
+	if err != nil || cert == nil {
+		cache[certID] = nil
+		return nil
+	}
+
+	cn := ""
+	if cert.Subject != nil {
+		cn = extractCNFromSubject(*cert.Subject)
+	}
+
+	if cn == "" {
+		if v, verr := dao.GetLatestVersion(certID); verr == nil && v != nil && v.Cert != nil {
+			if xc, perr := parseCertPEM(*v.Cert); perr == nil {
+				cn = xc.Subject.CommonName
+			}
+		}
+	}
+
+	var chain []string
+	if cert.ParentID != nil {
+		chain = append(chain, resolveCertChain(dao, *cert.ParentID, cache, visited)...)
+	}
+	if cn != "" {
+		chain = append(chain, cn)
+	}
+
+	cache[certID] = chain
+	return chain
 }
 
 func normalizeState(state *string, notAfter *int64) *string {
@@ -194,6 +254,8 @@ func ListCertsByGenres(dao *models.DB, offset, limit int, count *int64, genres [
 		return nil, ErrInternal(answer.EcodeError, "list certs failed", err)
 	}
 
+	chainCache := make(map[string][]string, len(certs))
+
 	items := make([]CertListItem, 0, len(certs))
 	for _, c := range certs {
 		item := CertListItem{
@@ -219,6 +281,12 @@ func ListCertsByGenres(dao *models.DB, offset, limit int, count *int64, genres [
 				}
 			}
 		}
+		// 拼证书链信息
+		item.Chain = strings.Join(
+			resolveCertChain(dao, c.CertID, chainCache, make(map[string]bool)),
+			"/",
+		)
+
 		items = append(items, item)
 	}
 	return items, nil

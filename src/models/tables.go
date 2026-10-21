@@ -104,7 +104,7 @@ func (d *DB) ListRevokedByIssuer(issuerID string) ([]Version, error) {
 	var list []Version
 	err = d.WithInstance().
 		Where("certid IN ? AND state = ?", certIDs, StateRevoked).
-		Order("revision DESC").
+		Order("revocation_time ASC").
 		Find(&list).Error
 	return list, err
 }
