@@ -465,11 +465,16 @@ func chooseSignatureAlgorithm(name string, signer crypto.Signer) (x509.Signature
 }
 
 // formatSubject 把 pkix.Name 转成 OpenSSL -subj 风格
-// 输出：/C=CN/O=PrivateSign/OU=PrivateSign/CN=AAA PrivateSign Root CA
+// 输出：/CN=xxx/C=CN/ST=Guangdong/L=Shenzhen/O=PrivateSign/OU=PrivateSign
 func formatSubject(n pkix.Name) string {
 	var b strings.Builder
 
-	// C（可能有多个）
+	// CN
+	if n.CommonName != "" {
+		b.WriteString("/CN=")
+		b.WriteString(n.CommonName)
+	}
+	// C
 	for _, c := range n.Country {
 		b.WriteString("/C=")
 		b.WriteString(c)
@@ -493,11 +498,6 @@ func formatSubject(n pkix.Name) string {
 	for _, ou := range n.OrganizationalUnit {
 		b.WriteString("/OU=")
 		b.WriteString(ou)
-	}
-	// CN
-	if n.CommonName != "" {
-		b.WriteString("/CN=")
-		b.WriteString(n.CommonName)
 	}
 
 	return b.String()
