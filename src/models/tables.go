@@ -2,6 +2,7 @@ package models
 
 import (
 	"errors"
+	"fmt"
 
 	"gorm.io/gorm"
 )
@@ -11,6 +12,8 @@ const (
 	GenreInter = 2
 	GenreLeaf  = 3
 )
+
+var ErrHasChildren = errors.New("certificate has sub-certificates")
 
 // ---------- 事务版：SaveCertBundle ----------
 
@@ -51,21 +54,40 @@ func (d *DB) RevokeCertTx(certID string, state string, revocationTime int64, rev
 }
 
 // DeleteCertTx 事务删除
+// FIX: 删除前检查是否有子证书，有则拒绝删除，避免产生孤儿证书
 func (d *DB) DeleteCertTx(certID string) error {
 	return d.db.Transaction(func(tx *gorm.DB) error {
+		// 1. 检查是否有子证书
+		var childCnt int64
+		if err := tx.Model(&Certificate{}).
+			Where("instance_id = ? AND parent_id = ?", d.instanceId, certID).
+			Count(&childCnt).Error; err != nil {
+			return err
+		}
+		if childCnt > 0 {
+			return fmt.Errorf("%w: %d sub-certificate(s) exist", ErrHasChildren, childCnt)
+		}
+
+		// 2. 查该 certID 的所有 version（用于后续清理 key）
 		var versions []Version
 		if err := tx.Where("instance_id = ? AND certid = ?", d.instanceId, certID).
 			Find(&versions).Error; err != nil {
 			return err
 		}
+
+		// 3. 删 version
 		if err := tx.Where("instance_id = ? AND certid = ?", d.instanceId, certID).
 			Delete(&Version{}).Error; err != nil {
 			return err
 		}
+
+		// 4. 删 certificate
 		if err := tx.Where("instance_id = ? AND certid = ?", d.instanceId, certID).
 			Delete(&Certificate{}).Error; err != nil {
 			return err
 		}
+
+		// 5. 清理不再被引用的 private_key
 		for _, v := range versions {
 			if v.KeyID == nil {
 				continue
