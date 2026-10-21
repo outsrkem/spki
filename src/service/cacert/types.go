@@ -181,7 +181,7 @@ var RevocationReasonMap = map[string]int8{
 	"superseded":           models.ReasonSuperseded,
 	"cessationOfOperation": models.ReasonCessationOfOperation,
 	"certificateHold":      models.ReasonCertificateHold,
-	"removeFromCRL":        models.ReasonRemoveFromCRL,
+	"removeFromCRL":        models.ReasonRemoveFromCRL, // TODO 该原因码仅用于增量 CRL 的恢复场景,后续优化
 	"privilegeWithdrawn":   models.ReasonPrivilegeWithdrawn,
 	"aACompromise":         models.ReasonAACompromise,
 }
